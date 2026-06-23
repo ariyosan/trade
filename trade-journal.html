@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#F6F1E7">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="トレード記録">
+<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxODAiIGhlaWdodD0iMTgwIiB2aWV3Qm94PSIwIDAgMTgwIDE4MCI+PHJlY3Qgd2lkdGg9IjE4MCIgaGVpZ2h0PSIxODAiIHJ4PSI0MCIgZmlsbD0iIzNBNUE2QiIvPjxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0Y2RjFFNyIgc3Ryb2tlLXdpZHRoPSI5IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik00MiAxMDVsMjYgMjYgNTAtNjQiLz48L2c+PHRleHQgeD0iOTAiIHk9IjE1NSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjYiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNGNkYxRTciIHRleHQtYW5jaG9yPSJtaWRkbGUiPlJVTEU8L3RleHQ+PC9zdmc+">
+<title>トレード記録</title>
+<style>
+  :root{
+    --paper:#F6F1E7; --card:#FFFDF8; --ink:#2B2A26; --sub:#6E685C;
+    --line:#E3DCCB; --lineStrong:#CFC6B0; --field:#FBF8F1;
+    --accent:#3A5A6B; --accentSoft:#E7EDF0; --gain:#3F7A57; --loss:#A8443B;
+    --warn:#C08A2D; --ondark:#FBF8F1;
+    --sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Segoe UI",sans-serif;
+    --mono:"SF Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:var(--sans);cursor:pointer;}
+  input,textarea,select{font-family:var(--sans);}
+  input[type=number]{-moz-appearance:textfield;}
+  input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .wrap{max-width:560px;margin:0 auto;padding:0 0 120px;}
+
+  /* header */
+  .hd{position:sticky;top:0;z-index:5;background:var(--paper);
+    border-bottom:1px solid var(--line);padding:16px 18px 12px;
+    display:flex;align-items:baseline;justify-content:space-between;}
+  .hd-eyebrow{font-size:11px;letter-spacing:2px;color:var(--sub);font-weight:600;}
+  .hd-title{font-size:20px;font-weight:700;margin-top:2px;}
+  .tabs{display:flex;gap:6px;}
+  .tab{border:1px solid var(--lineStrong);background:transparent;color:var(--sub);
+    font-size:13px;font-weight:600;padding:7px 14px;border-radius:999px;min-height:36px;}
+  .tab.active{border-color:var(--accent);background:var(--accent);color:var(--ondark);}
+
+  /* generic */
+  .pad{padding:8px 14px;}
+  .pad2{padding:12px 14px;}
+  .seclabel{font-size:12px;letter-spacing:1.5px;color:var(--sub);font-weight:700;margin:16px 2px 8px;}
+  .seclabel.inline{margin:0;}
+  .muted{font-size:13px;color:var(--sub);padding:4px 2px 8px;}
+  .row{display:flex;gap:12px;}
+  .field{margin-top:14px;}
+  .field-label{font-size:12.5px;color:var(--sub);font-weight:600;margin-bottom:6px;}
+  .input{width:100%;background:var(--field);border:1.5px solid var(--lineStrong);
+    border-radius:10px;padding:12px;font-size:15px;color:var(--ink);outline:none;min-height:46px;}
+  .input.num{font-family:var(--mono);}
+  textarea.input{min-height:84px;resize:vertical;line-height:1.6;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .card-top{display:flex;align-items:baseline;justify-content:space-between;}
+  .card-sym{font-size:17px;font-weight:700;}
+  .card-date{font-size:12px;color:var(--sub);font-family:var(--mono);}
+  .pills{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
+  .pill{font-size:12px;color:var(--ink);background:var(--field);border:1px solid var(--line);
+    border-radius:999px;padding:4px 10px;white-space:nowrap;}
+  .pill.mono{font-family:var(--mono);}
+  .tag{font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;
+    white-space:nowrap;border:1.5px solid;display:inline-block;}
+  .statusline{margin-top:10px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
+
+  .btn{border:none;border-radius:12px;font-size:16px;font-weight:700;min-height:50px;}
+  .btn-primary{background:var(--accent);color:var(--ondark);flex:1;}
+  .btn-primary-sm{background:var(--accent);color:var(--ondark);flex:1;min-height:44px;
+    border:none;border-radius:10px;font-size:14px;font-weight:700;}
+  .btn-secondary{width:100%;border:1.5px solid var(--accent);background:transparent;
+    color:var(--accent);font-size:15px;font-weight:700;border-radius:12px;min-height:50px;}
+  .btn-ghost{padding:0 20px;border:1.5px solid var(--lineStrong);background:transparent;
+    color:var(--sub);font-size:15px;font-weight:600;border-radius:12px;min-height:50px;}
+  .btn:disabled{opacity:.45;}
+
+  .note-box{margin-top:10px;font-size:13px;color:var(--sub);background:var(--field);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;line-height:1.6;}
+
+  /* side toggle */
+  .sidetoggle{display:flex;background:var(--field);border:1px solid var(--line);
+    border-radius:12px;padding:4px;margin-bottom:14px;}
+  .sidetoggle button{flex:1;min-height:44px;border:none;border-radius:9px;
+    font-size:15px;font-weight:700;background:transparent;color:var(--sub);}
+  .sidetoggle button.buy.active{background:var(--gain);color:var(--ondark);}
+  .sidetoggle button.sell.active{background:var(--loss);color:var(--ondark);}
+
+  /* pullback */
+  .pullback{display:flex;gap:8px;}
+  .pullback button{flex:1;text-align:left;padding:11px 12px;min-height:44px;border-radius:10px;
+    border:1.5px solid var(--lineStrong);background:var(--card);}
+  .pullback button.active{border-color:var(--accent);background:var(--accentSoft);}
+  .pullback .pb-t{font-size:14px;font-weight:700;color:var(--ink);}
+  .pullback button.active .pb-t{color:var(--accent);}
+  .pullback .pb-s{font-size:11px;color:var(--sub);margin-top:2px;line-height:1.4;}
+
+  /* rule check */
+  .rulehead{display:flex;align-items:baseline;justify-content:space-between;}
+  .rulehead .status-clear{font-size:12px;color:var(--gain);font-weight:600;}
+  .rulehead .status-viol{font-size:12px;color:var(--loss);font-weight:600;}
+  .rulehint{font-size:12px;color:var(--sub);margin:4px 0 10px;}
+  .rulerow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 0;border-bottom:1px solid var(--line);}
+  .rulerow-txt{flex:1;min-width:0;}
+  .rulerow-t{font-size:14.5px;font-weight:600;line-height:1.3;}
+  .rulerow-s{font-size:11.5px;color:var(--sub);margin-top:2px;line-height:1.3;}
+  .ox{display:flex;gap:6px;}
+  .ox button{width:42px;height:44px;flex-shrink:0;border-radius:10px;font-size:18px;
+    font-weight:700;border:1.5px solid var(--lineStrong);background:var(--card);color:var(--sub);}
+  .ox button.on-o.active{border-color:var(--gain);background:var(--gain);color:var(--ondark);}
+  .ox button.on-x.active{border-color:var(--loss);background:var(--loss);color:var(--ondark);}
+
+  /* checkrow */
+  .checkrow{width:100%;display:flex;align-items:center;gap:12px;text-align:left;
+    padding:12px;min-height:44px;margin-bottom:8px;border-radius:10px;
+    border:1.5px solid var(--lineStrong);background:var(--card);}
+  .checkrow.on{border-color:var(--accent);background:var(--accentSoft);}
+  .checkrow .box{width:24px;height:24px;border-radius:6px;flex-shrink:0;display:flex;
+    align-items:center;justify-content:center;font-size:15px;color:var(--ondark);
+    background:transparent;border:1.5px solid var(--lineStrong);}
+  .checkrow.on .box{background:var(--accent);border-color:var(--accent);}
+  .checkrow .lbl{font-size:13.5px;line-height:1.5;color:var(--ink);}
+
+  /* exit preview */
+  .plprev{border-radius:12px;padding:14px 16px;margin-top:6px;display:flex;
+    align-items:baseline;justify-content:space-between;}
+  .plprev.win{background:#EEF4EF;border:1px solid #CADFCE;}
+  .plprev.lose{background:#F6EBEA;border:1px solid #E7CFCB;}
+  .plprev .lab{font-size:11px;color:var(--sub);letter-spacing:1px;}
+  .plprev .big{font-family:var(--mono);font-size:26px;font-weight:700;}
+  .plprev .pct{font-family:var(--mono);font-size:15px;}
+  .plprev .held{font-size:12px;color:var(--sub);margin-top:2px;}
+
+  /* stats */
+  .statcard{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:16px;margin-bottom:14px;}
+  .bar{height:9px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:8px;}
+  .bar.thin{height:6px;}
+  .bar > span{display:block;height:100%;border-radius:999px;transition:width .3s;}
+  .plbox{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:16px;margin-bottom:8px;}
+  .graderow{display:flex;align-items:center;justify-content:space-between;
+    padding:8px 0;border-bottom:1px solid var(--line);}
+
+  /* bottom bar */
+  .bottombar{position:fixed;left:0;right:0;bottom:0;z-index:6;
+    background:linear-gradient(180deg,rgba(246,241,231,0) 0%,var(--paper) 30%);
+    padding:20px 16px calc(18px + env(safe-area-inset-bottom));}
+  .bottombar .inner{max-width:560px;margin:0 auto;display:flex;gap:10px;}
+
+  /* toast */
+  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--ondark);font-size:13.5px;padding:10px 18px;
+    border-radius:16px;max-width:82%;text-align:center;line-height:1.5;z-index:20;
+    box-shadow:0 6px 20px rgba(0,0,0,.18);}
+
+  .empty{padding:48px 28px;text-align:center;}
+  .empty-t{font-size:17px;font-weight:700;margin-bottom:8px;}
+  .empty-b{font-size:14px;color:var(--sub);line-height:1.7;}
+  .delbtn{min-height:44px;padding:0 14px;border-radius:10px;font-size:13px;font-weight:600;
+    border:1px solid var(--lineStrong);background:transparent;color:var(--sub);}
+  .delbtn.armed{border-color:var(--loss);background:var(--loss);color:var(--ondark);}
+  .hide{display:none !important;}
+  .center{text-align:center;}
+  .smallnote{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd">
+    <div>
+      <div class="hd-eyebrow">RULE FIRST</div>
+      <div class="hd-title" id="hdTitle">トレード記録</div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-screen="list">記録</button>
+      <button class="tab" data-screen="stats">集計</button>
+    </div>
+  </div>
+  <div id="main"></div>
+</div>
+<div class="bottombar hide" id="bottombar"><div class="inner" id="bottombarInner"></div></div>
+<div id="toastHost"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   IndexedDB ストレージ
+   ============================================================ */
+const DB_NAME = "tradeJournalDB";
+const STORE = "trades";
+let _db = null;
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(DB_NAME,1);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains(STORE)){
+        db.createObjectStore(STORE,{keyPath:"id"});
+      }
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error||new Error("DBを開けない"));
+  });
+}
+async function db(){ if(!_db) _db = await openDB(); return _db; }
+
+async function dbGetAll(){
+  const d = await db();
+  return new Promise((resolve,reject)=>{
+    const tx = d.transaction(STORE,"readonly");
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = ()=>resolve(req.result||[]);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+async function dbPut(t){
+  const d = await db();
+  return new Promise((resolve,reject)=>{
+    const tx = d.transaction(STORE,"readwrite");
+    tx.objectStore(STORE).put(t);
+    tx.oncomplete = ()=>resolve(true);
+    tx.onerror = ()=>reject(tx.error||new Error("保存失敗"));
+  });
+}
+async function dbDelete(id){
+  const d = await db();
+  return new Promise((resolve,reject)=>{
+    const tx = d.transaction(STORE,"readwrite");
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = ()=>resolve(true);
+    tx.onerror = ()=>reject(tx.error);
+  });
+}
+async function dbPutMany(list){
+  const d = await db();
+  return new Promise((resolve,reject)=>{
+    const tx = d.transaction(STORE,"readwrite");
+    const store = tx.objectStore(STORE);
+    for(const t of list) store.put(t);
+    tx.oncomplete = ()=>resolve(true);
+    tx.onerror = ()=>reject(tx.error||new Error("一括保存失敗"));
+  });
+}
+
+/* ============================================================
+   計算ヘルパ
+   ============================================================ */
+const RULE_KEYS = ["order","slope","trigger","calm"];
+
+const RULE_LABELS = {
+  buy:{
+    order:{t:"20日線 ＞ 100日線", s:"中期が長期の上"},
+    slope:{t:"5日線が上向き", s:"横ばい・微下げは×"},
+    trigger:{t:"実体半分が5日線の上", s:"下から上抜けた足"},
+    calm:{t:"荒れ相場でない", s:"指数の乱高下・有事でない"},
+  },
+  sell:{
+    order:{t:"20日線 ＜ 100日線", s:"中期が長期の下"},
+    slope:{t:"5日線が下向き", s:"横ばい・微上げは×"},
+    trigger:{t:"実体半分が5日線の下", s:"上から下抜けた足"},
+    calm:{t:"荒れ相場でない", s:"指数の乱高下・有事でない"},
+  },
+};
+const PULLBACK_LABEL = {
+  ideal:"理想形", ideal_sub:"5日線 ≥ 20日線を保って再上昇",
+  allow:"許容形", allow_sub:"5日線が20日線を割って再上昇",
+};
+const SHORT_RULE = {
+  order:"並び（20日線と100日線）", slope:"5日線の向き",
+  trigger:"実体半分が5日線の外", calm:"荒れ相場でない",
+};
+
+function violationCount(r){ let n=0; for(const k of RULE_KEYS) if(r[k]===false) n++; return n; }
+function uncheckedCount(r){ let n=0; for(const k of RULE_KEYS) if(r[k]==null) n++; return n; }
+function isClean(r){ return RULE_KEYS.every(k=>r[k]===true); }
+
+function calcPL(t){
+  if(t.exitPrice==null||t.entryPrice==null) return null;
+  const entry=Number(t.entryPrice), exit=Number(t.exitPrice), units=Number(t.units)||0;
+  if(!entry||!units) return null;
+  const diff = t.side==="buy" ? exit-entry : entry-exit;
+  return { amount: diff*units*100, pct: (diff/entry)*100 };
+}
+function daysBetween(a,b){
+  if(!a||!b) return null;
+  const d1=new Date(a+"T00:00:00"), d2=new Date(b+"T00:00:00");
+  return Math.round((d2-d1)/86400000);
+}
+function todayStr(){
+  const d=new Date(); const off=d.getTimezoneOffset()*60000;
+  return new Date(d-off).toISOString().slice(0,10);
+}
+function fmtYen(n){
+  if(n==null) return "—";
+  const r=Math.round(n); const s = r<0?"−":r>0?"+":"±";
+  return s+"¥"+Math.abs(r).toLocaleString("ja-JP");
+}
+function fmtPct(n){
+  if(n==null) return "—";
+  const s=n<0?"−":n>0?"+":"±";
+  return s+Math.abs(n).toFixed(2)+"%";
+}
+function cardBorderColor(v){ return v===0?"var(--gain)":v<=2?"var(--warn)":"var(--loss)"; }
+
+function blankTrade(){
+  return {
+    id: Date.now()+"_"+Math.random().toString(36).slice(2,7),
+    side:"buy", symbol:"", entryDate:todayStr(), entryPrice:"", units:"1",
+    pullback:"ideal",
+    rules:{order:null,slope:null,trigger:null,calm:null},
+    exitDate:null, exitPrice:null, note:"",
+    noPyramid:true, tagBear2:false, tagWick:false,
+  };
+}
+function esc(s){
+  return String(s==null?"":s).replace(/[&<>"']/g,m=>(
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+
+/* ============================================================
+   アプリ状態
+   ============================================================ */
+const App = {
+  screen:"list",   // list | entry | exit | stats
+  trades:[],
+  draft:null,
+  loaded:false,
+};
+
+const $main = document.getElementById("main");
+const $bottombar = document.getElementById("bottombar");
+const $bottombarInner = document.getElementById("bottombarInner");
+const $hdTitle = document.getElementById("hdTitle");
+const $tabs = document.getElementById("tabs");
+const $toastHost = document.getElementById("toastHost");
+
+async function loadTrades(){
+  try{
+    const arr = await dbGetAll();
+    arr.sort((a,b)=> a.entryDate<b.entryDate?1:-1);
+    App.trades = arr;
+  }catch(e){ App.trades=[]; }
+}
+
+function flash(msg){
+  $toastHost.innerHTML = `<div class="toast">${esc(msg)}</div>`;
+  clearTimeout(flash._t);
+  flash._t = setTimeout(()=>{ $toastHost.innerHTML=""; }, 2600);
+}
+
+function go(screen){ App.screen=screen; render(); }
+
+async function commitTrade(t, msg){
+  try{
+    await dbPut(t);
+    await loadTrades();
+    App.screen="list";
+    render();
+    flash(msg);
+  }catch(e){
+    flash("保存できなかった："+((e&&e.message)||"不明なエラー"));
+  }
+}
+async function removeTrade(id){
+  try{ await dbDelete(id); await loadTrades(); render(); flash("削除した"); }
+  catch(e){ flash("削除できなかった："+((e&&e.message)||"不明")); }
+}
+
+/* ============================================================
+   レンダリング
+   ============================================================ */
+function render(){
+  // header
+  $hdTitle.textContent =
+    App.screen==="entry"?"エントリー記録":
+    App.screen==="exit"?"イグジット記録":
+    App.screen==="stats"?"集計":"トレード記録";
+  // tabs visible only on list/stats
+  const tabScreen = (App.screen==="list"||App.screen==="stats");
+  $tabs.style.display = tabScreen ? "flex" : "none";
+  if(tabScreen){
+    [...$tabs.children].forEach(b=>{
+      b.classList.toggle("active", b.dataset.screen===App.screen);
+    });
+  }
+
+  if(!App.loaded){ $main.innerHTML = `<div style="padding:40px;text-align:center;color:var(--sub)">読み込み中…</div>`; return; }
+
+  if(App.screen==="list") renderList();
+  else if(App.screen==="entry") renderEntry();
+  else if(App.screen==="exit") renderExit();
+  else if(App.screen==="stats") renderStats();
+
+  renderBottomBar();
+}
+
+function renderBottomBar(){
+  if(App.screen==="list"){
+    $bottombar.classList.remove("hide");
+    $bottombarInner.innerHTML = `<button class="btn btn-primary" id="bbAdd">＋ エントリーを記録</button>`;
+    document.getElementById("bbAdd").onclick = ()=>{ App.draft=blankTrade(); go("entry"); };
+  } else if(App.screen==="stats"){
+    $bottombar.classList.remove("hide");
+    $bottombarInner.innerHTML = `<button class="btn btn-secondary" id="bbBack">← 一覧へ戻る</button>`;
+    document.getElementById("bbBack").onclick = ()=> go("list");
+  } else {
+    $bottombar.classList.add("hide");
+    $bottombarInner.innerHTML = "";
+  }
+}
+
+/* ---------- 一覧 ---------- */
+function renderList(){
+  const open = App.trades.filter(t=>t.exitPrice==null);
+  const closed = App.trades.filter(t=>t.exitPrice!=null);
+
+  if(App.trades.length===0){
+    $main.innerHTML = emptyHTML("まだ記録がない",
+      "エントリーした取引を記録すると、ここに保有中として並ぶ。決済したら同じ取引にイグジットを追記する。");
+    return;
+  }
+
+  let html = `<div class="pad">`;
+  html += `<div class="seclabel">保有中 ${open.length>0?`（${open.length}）`:""}</div>`;
+  html += open.length===0 ? `<div class="muted">保有中の取引はない。</div>`
+        : open.map(openCardHTML).join("");
+  html += `<div style="height:18px"></div>`;
+  html += `<div class="seclabel">決済済み ${closed.length>0?`（${closed.length}）`:""}</div>`;
+  html += closed.length===0 ? `<div class="muted">決済済みの取引はまだない。</div>`
+        : closed.map(closedCardHTML).join("");
+  html += `</div>`;
+  $main.innerHTML = html;
+
+  // wire buttons
+  open.forEach(t=>{
+    const ex=document.getElementById("exit_"+t.id);
+    if(ex) ex.onclick=()=>{ startExit(t); };
+  });
+  wireDeletes();
+}
+
+function cardTopHTML(t){
+  return `<div class="card-top">
+    <div class="card-sym">${esc(t.symbol||"（銘柄未入力）")}</div>
+    <div class="card-date">${esc(t.entryDate)}</div></div>`;
+}
+
+function openCardHTML(t){
+  const v=violationCount(t.rules), unchecked=uncheckedCount(t.rules);
+  let status;
+  if(unchecked>0) status=`<span class="tag" style="color:var(--warn);border-color:var(--warn)">未評価が${unchecked}項目</span>`;
+  else if(v===0) status=`<span class="tag" style="color:var(--gain);border-color:var(--gain)">ルール通り</span>`;
+  else status=`<span class="tag" style="color:var(--loss);border-color:var(--loss)">違反${v}項目</span>`;
+  return `<div class="card" style="border-left:4px solid ${cardBorderColor(v)}">
+    ${cardTopHTML(t)}
+    <div class="pills">
+      <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
+      <span class="pill">${PULLBACK_LABEL[t.pullback]}</span>
+      <span class="pill mono">建値 ${Number(t.entryPrice).toLocaleString("ja-JP")}</span>
+      <span class="pill mono">${esc(t.units)}単元</span>
+    </div>
+    <div style="margin-top:10px">
+      ${status}
+      <span style="margin-left:10px;font-size:12px;color:var(--sub)">想定撤退ライン＝5日線終値割れ</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn-primary-sm" id="exit_${t.id}">イグジットを記録</button>
+      ${delBtnHTML(t.id)}
+    </div>
+  </div>`;
+}
+
+function closedCardHTML(t){
+  const v=violationCount(t.rules), pl=calcPL(t), held=daysBetween(t.entryDate,t.exitDate);
+  const win = pl && pl.amount>=0;
+  const col = win?"var(--gain)":"var(--loss)";
+  let tags = (v===0
+      ? `<span class="tag" style="color:var(--gain);border-color:var(--gain)">ルール通り</span>`
+      : `<span class="tag" style="color:var(--loss);border-color:var(--loss)">違反${v}項目</span>`);
+  if(t.noPyramid===false) tags+=`<span class="tag" style="color:var(--warn);border-color:var(--warn)">ナンピンあり</span>`;
+  if(t.tagBear2) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">陰線2本目で降りられた</span>`;
+  if(t.tagWick) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">上ヒゲ陽線で降りられた</span>`;
+  return `<div class="card" style="border-left:4px solid ${cardBorderColor(v)}">
+    ${cardTopHTML(t)}
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:8px">
+      <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${col}">${pl?fmtYen(pl.amount):"—"}</div>
+      <div style="font-family:var(--mono);font-size:14px;color:${col}">${pl?fmtPct(pl.pct):""}</div>
+    </div>
+    <div class="pills">
+      <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
+      <span class="pill">${PULLBACK_LABEL[t.pullback]}</span>
+      <span class="pill mono">${Number(t.entryPrice).toLocaleString("ja-JP")} → ${Number(t.exitPrice).toLocaleString("ja-JP")}</span>
+      ${held!=null?`<span class="pill">${held}日保有</span>`:""}
+    </div>
+    <div class="statusline">${tags}</div>
+    ${t.note?`<div class="note-box">${esc(t.note)}</div>`:""}
+    <div style="display:flex;justify-content:flex-end;margin-top:10px">${delBtnHTML(t.id)}</div>
+  </div>`;
+}
+
+/* ---------- 削除ボタン（2段階） ---------- */
+function delBtnHTML(id){ return `<button class="delbtn" data-del="${id}">削除</button>`; }
+function wireDeletes(){
+  document.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.onclick = ()=>{
+      if(btn.classList.contains("armed")){ removeTrade(btn.dataset.del); }
+      else{
+        btn.classList.add("armed"); btn.textContent="本当に削除？";
+        setTimeout(()=>{ if(btn.isConnected){ btn.classList.remove("armed"); btn.textContent="削除"; } },3000);
+      }
+    };
+  });
+}
+
+/* ---------- エントリーフォーム ---------- */
+function renderEntry(){
+  const d = App.draft;
+  const labels = RULE_LABELS[d.side];
+  const unchecked = uncheckedCount(d.rules), v = violationCount(d.rules);
+  const statusRight = unchecked>0 ? "" :
+    (v===0 ? `<span class="status-clear">全項目クリア</span>`
+           : `<span class="status-viol">違反${v}項目</span>`);
+
+  $main.innerHTML = `<div class="pad2">
+    <div class="sidetoggle">
+      <button class="buy ${d.side==="buy"?"active":""}" data-side="buy">買い</button>
+      <button class="sell ${d.side==="sell"?"active":""}" data-side="sell">売り</button>
+    </div>
+
+    <div class="field"><div class="field-label">銘柄</div>
+      <input class="input" id="f_symbol" value="${esc(d.symbol)}" placeholder="例）7203 トヨタ"></div>
+
+    <div class="row">
+      <div class="field" style="flex:1"><div class="field-label">エントリー日</div>
+        <input class="input" id="f_entryDate" type="date" value="${esc(d.entryDate)}"></div>
+      <div class="field" style="flex:1"><div class="field-label">単元数（×100株）</div>
+        <input class="input num" id="f_units" type="number" min="1" step="1" inputmode="numeric" value="${esc(d.units)}"></div>
+    </div>
+
+    <div class="field"><div class="field-label">エントリー単価</div>
+      <input class="input num" id="f_entryPrice" type="number" step="0.1" inputmode="decimal" style="font-size:18px" value="${esc(d.entryPrice)}" placeholder="株価"></div>
+
+    <div class="field"><div class="field-label">押し目の形</div>
+      <div class="pullback" id="f_pullback">
+        <button data-pb="ideal" class="${d.pullback==="ideal"?"active":""}">
+          <div class="pb-t">${PULLBACK_LABEL.ideal}</div><div class="pb-s">${PULLBACK_LABEL.ideal_sub}</div></button>
+        <button data-pb="allow" class="${d.pullback==="allow"?"active":""}">
+          <div class="pb-t">${PULLBACK_LABEL.allow}</div><div class="pb-s">${PULLBACK_LABEL.allow_sub}</div></button>
+      </div></div>
+
+    <div style="margin-top:16px">
+      <div class="rulehead"><span class="seclabel inline">ルールチェック</span><span id="ruleStatus">${statusRight}</span></div>
+      <div class="rulehint">守れた／破ったを正直に。</div>
+      <div id="ruleList">${RULE_KEYS.map(k=>ruleRowHTML(k,labels[k],d.rules[k])).join("")}</div>
+    </div>
+
+    <div style="height:14px"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-ghost" id="f_cancel">やめる</button>
+      <button class="btn btn-primary" id="f_save">記録する</button>
+    </div>
+    <div class="smallnote center" id="f_hint"></div>
+  </div>`;
+
+  // wiring
+  $main.querySelectorAll("[data-side]").forEach(b=>b.onclick=()=>{ d.side=b.dataset.side; renderEntry(); });
+  $main.querySelectorAll("[data-pb]").forEach(b=>b.onclick=()=>{ d.pullback=b.dataset.pb; renderEntry(); });
+  bindInput("f_symbol", val=>d.symbol=val);
+  bindInput("f_entryDate", val=>d.entryDate=val);
+  bindInput("f_units", val=>{ d.units=val; });
+  bindInput("f_entryPrice", val=>{ d.entryPrice=val; });
+  wireRuleButtons(d, ()=>renderEntry());
+
+  document.getElementById("f_cancel").onclick=()=>go("list");
+  const saveBtn=document.getElementById("f_save");
+  const refreshSave=()=>{
+    const ok = d.symbol.trim() && Number(d.entryPrice)>0 && Number(d.units)>0;
+    saveBtn.disabled=!ok;
+    document.getElementById("f_hint").textContent = ok?"":"銘柄・単価・単元数を入れると記録できる。";
+  };
+  refreshSave();
+  // re-check on input
+  ["f_symbol","f_entryPrice","f_units"].forEach(id=>{
+    document.getElementById(id).addEventListener("input",refreshSave);
+  });
+  saveBtn.onclick=()=>{
+    if(saveBtn.disabled) return;
+    commitTrade({...d}, "エントリーを記録した");
+  };
+}
+
+function ruleRowHTML(k,label,val){
+  return `<div class="rulerow">
+    <div class="rulerow-txt">
+      <div class="rulerow-t">${label.t}</div>
+      <div class="rulerow-s">${label.s}</div>
+    </div>
+    <div class="ox" data-rule="${k}">
+      <button class="on-o ${val===true?"active":""}" data-val="true">○</button>
+      <button class="on-x ${val===false?"active":""}" data-val="false">×</button>
+    </div>
+  </div>`;
+}
+function wireRuleButtons(d, rerender){
+  $main.querySelectorAll(".ox").forEach(group=>{
+    const k=group.dataset.rule;
+    group.querySelectorAll("button").forEach(btn=>{
+      btn.onclick=()=>{ d.rules[k]=(btn.dataset.val==="true"); rerender(); };
+    });
+  });
+}
+
+/* ---------- イグジットフォーム ---------- */
+function startExit(t){
+  App.draft = {
+    ...t,
+    exitDate: t.exitDate||todayStr(),
+    exitPrice: t.exitPrice==null?"":t.exitPrice,
+    note: t.note||"",
+    noPyramid: t.noPyramid!==false,
+    tagBear2: !!t.tagBear2, tagWick: !!t.tagWick,
+  };
+  go("exit");
+}
+
+function renderExit(){
+  const d = App.draft;
+  function plPreview(){
+    const pl = calcPL({...d, exitPrice:Number(d.exitPrice)});
+    const held = daysBetween(d.entryDate,d.exitDate);
+    const win = pl && pl.amount>=0;
+    const col = win?"var(--gain)":"var(--loss)";
+    return `<div class="plprev ${win?"win":"lose"}">
+      <div>
+        <div class="lab">損益（自動計算）</div>
+        <div class="big" style="color:${col}">${pl?fmtYen(pl.amount):"—"}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="pct" style="color:${col}">${pl?fmtPct(pl.pct):""}</div>
+        ${held!=null?`<div class="held">${held}日保有</div>`:""}
+      </div>
+    </div>`;
+  }
+
+  $main.innerHTML = `<div class="pad2">
+    <div class="card" style="border-left:4px solid ${cardBorderColor(violationCount(d.rules))}">
+      ${cardTopHTML(d)}
+      <div class="pills">
+        <span class="pill">${d.side==="buy"?"買い":"売り"}</span>
+        <span class="pill mono">建値 ${Number(d.entryPrice).toLocaleString("ja-JP")}</span>
+        <span class="pill mono">${esc(d.units)}単元</span>
+        <span class="pill">${PULLBACK_LABEL[d.pullback]}</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field" style="flex:1"><div class="field-label">イグジット日</div>
+        <input class="input" id="x_exitDate" type="date" value="${esc(d.exitDate)}"></div>
+      <div class="field" style="flex:1"><div class="field-label">イグジット単価</div>
+        <input class="input num" id="x_exitPrice" type="number" step="0.1" inputmode="decimal" style="font-size:18px" value="${esc(d.exitPrice)}" placeholder="株価"></div>
+    </div>
+
+    <div id="x_preview">${plPreview()}</div>
+
+    <div style="margin-top:16px">
+      <span class="seclabel inline">建玉操作</span>
+      <div class="rulehint">保有中にナンピン・増し玉をせず、単発を貫けたか。</div>
+      <button class="checkrow ${d.noPyramid?"on":""}" id="x_noPyramid">
+        <span class="box">${d.noPyramid?"✓":""}</span>
+        <span class="lbl">ナンピン・増し玉せず、単発のまま手仕舞った</span>
+      </button>
+    </div>
+
+    <div style="margin-top:16px">
+      <span class="seclabel inline">持ちすぎ検証（任意）</span>
+      <div class="rulehint">その足の終値で降りていたら、実際より高く（売りなら安く）逃げられたか。撤退ルールではなく検証メモ。</div>
+      <button class="checkrow ${d.tagBear2?"on":""}" id="x_tagBear2">
+        <span class="box">${d.tagBear2?"✓":""}</span>
+        <span class="lbl">陰線2本目の終値が、実際のイグジットより有利だった</span>
+      </button>
+      <button class="checkrow ${d.tagWick?"on":""}" id="x_tagWick">
+        <span class="box">${d.tagWick?"✓":""}</span>
+        <span class="lbl">上ヒゲの長い陽線の終値が、実際のイグジットより有利だった</span>
+      </button>
+    </div>
+
+    <div class="field"><div class="field-label">反省メモ（任意）</div>
+      <textarea class="input" id="x_note" placeholder="例）5日線終値割れで規律どおり撤退。粘らなかった。">${esc(d.note)}</textarea></div>
+
+    <div style="height:6px"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-ghost" id="x_cancel">やめる</button>
+      <button class="btn btn-primary" id="x_save">イグジットを記録</button>
+    </div>
+  </div>`;
+
+  bindInput("x_exitDate", val=>{ d.exitDate=val; document.getElementById("x_preview").innerHTML=plPreview(); });
+  bindInput("x_exitPrice", val=>{ d.exitPrice=val; document.getElementById("x_preview").innerHTML=plPreview(); });
+  bindInput("x_note", val=>d.note=val);
+  toggleCheck("x_noPyramid", ()=>{ d.noPyramid=!d.noPyramid; renderExit(); });
+  toggleCheck("x_tagBear2", ()=>{ d.tagBear2=!d.tagBear2; renderExit(); });
+  toggleCheck("x_tagWick", ()=>{ d.tagWick=!d.tagWick; renderExit(); });
+
+  document.getElementById("x_cancel").onclick=()=>go("list");
+  const saveBtn=document.getElementById("x_save");
+  const refreshSave=()=>{ saveBtn.disabled = !(Number(d.exitPrice)>0 && d.exitDate); };
+  refreshSave();
+  document.getElementById("x_exitPrice").addEventListener("input",refreshSave);
+  document.getElementById("x_exitDate").addEventListener("input",refreshSave);
+  saveBtn.onclick=()=>{
+    if(saveBtn.disabled) return;
+    commitTrade({...d, exitPrice:Number(d.exitPrice)}, "イグジットを記録した");
+  };
+}
+
+function toggleCheck(id, fn){ const el=document.getElementById(id); if(el) el.onclick=fn; }
+function bindInput(id, fn){ const el=document.getElementById(id); if(el) el.addEventListener("input", e=>fn(e.target.value)); }
+
+/* ---------- 集計 ---------- */
+function agg(arr){
+  const pls = arr.map(calcPL).filter(Boolean);
+  const n=pls.length, sum=pls.reduce((s,p)=>s+p.amount,0);
+  const wins=pls.filter(p=>p.amount>=0).length;
+  return { n, sum, avg:n?sum/n:0, winRate:n?wins/n:0 };
+}
+function renderStats(){
+  const trades=App.trades;
+  const closed=trades.filter(t=>t.exitPrice!=null);
+
+  if(trades.length===0){
+    $main.innerHTML = emptyHTML("集計するデータがない",
+      "記録が貯まると、遵守率・ルール通りの損益・破りがちなルールがここに出る。")
+      + `<div class="pad"><button class="btn-secondary" id="st_restore_empty">⬆ バックアップから復元する</button>
+         <div class="smallnote center">機種変や履歴削除のあとは、保管したJSONから記録を戻せる。</div></div>`;
+    const rb=document.getElementById("st_restore_empty");
+    if(rb) rb.onclick=()=>importJSONFile();
+    return;
+  }
+
+  const total=trades.length;
+  const cleanCount=trades.filter(t=>isClean(t.rules)).length;
+  const compliance= total?cleanCount/total:0;
+  const cleanAgg=agg(closed.filter(t=>isClean(t.rules)));
+  const dirtyAgg=agg(closed.filter(t=>!isClean(t.rules)));
+  const violByRule={}; RULE_KEYS.forEach(k=> violByRule[k]=trades.filter(t=>t.rules[k]===false).length);
+  const byViol={
+    clean:agg(closed.filter(t=>violationCount(t.rules)===0)),
+    few:agg(closed.filter(t=>{const v=violationCount(t.rules);return v>=1&&v<=2;})),
+    many:agg(closed.filter(t=>violationCount(t.rules)>=3)),
+  };
+  const byPull={ ideal:agg(closed.filter(t=>t.pullback==="ideal")), allow:agg(closed.filter(t=>t.pullback==="allow")) };
+  const tagBear2=closed.filter(t=>t.tagBear2).length, tagWick=closed.filter(t=>t.tagWick).length;
+
+  const pct=x=>Math.round(x*100)+"%";
+
+  $main.innerHTML = `<div class="pad">
+    <div class="statcard">
+      <div style="font-size:12px;color:var(--sub);letter-spacing:1px">遵守率（全項目○の割合）</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px">
+        <div style="font-family:var(--mono);font-size:38px;font-weight:700;color:var(--accent)">${total===0?"—":pct(compliance)}</div>
+        <div style="font-size:13px;color:var(--sub)">${cleanCount} / ${total} トレード</div>
+      </div>
+      ${barHTML(compliance,"var(--accent)")}
+      <div style="font-size:12px;color:var(--sub);margin-top:8px;line-height:1.6">評価軸はここ。勝ち負けではなく、守れた回数で自分を見る。</div>
+    </div>
+
+    <div class="seclabel">ルール通り vs 違反（決済済みのみ）</div>
+    ${closed.length===0?`<div class="muted">決済済みの取引がまだない。決済するとここに損益が出る。</div>`:""}
+    <div style="display:flex;gap:10px">
+      ${plBoxHTML("ルール通り",cleanAgg)}
+      ${plBoxHTML("違反あり",dirtyAgg)}
+    </div>
+    <div style="font-size:12px;color:var(--sub);margin:8px 2px 18px;line-height:1.6">連敗したら「ルール通り」の列を見る。ここがプラス基調なら手法は壊れていない。</div>
+
+    <div class="seclabel">どのルールを破りがちか</div>
+    <div class="statcard">
+      ${RULE_KEYS.map(k=>{
+        const cnt=violByRule[k], ratio=total?cnt/total:0;
+        return `<div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:13px">
+            <span>${SHORT_RULE[k]}</span>
+            <span style="font-family:var(--mono);color:${cnt>0?"var(--loss)":"var(--sub)"}">${cnt}回</span>
+          </div>
+          ${barHTML(ratio, cnt>0?"var(--loss)":"var(--line)", true)}
+        </div>`;
+      }).join("")}
+    </div>
+
+    <div class="seclabel">違反数 × 成績（決済済み）</div>
+    <div class="statcard">
+      ${gradeRowHTML("違反 0個",byViol.clean)}
+      ${gradeRowHTML("違反 1〜2個",byViol.few)}
+      ${gradeRowHTML("違反 3個以上",byViol.many,true)}
+    </div>
+
+    <div class="seclabel">押し目の形 × 成績（決済済み）</div>
+    <div class="statcard">
+      ${gradeRowHTML("理想形",byPull.ideal)}
+      ${gradeRowHTML("許容形",byPull.allow,true)}
+    </div>
+
+    <div class="seclabel">持ちすぎタグの頻度（決済済み）</div>
+    <div class="statcard">
+      <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px">
+        <span>陰線2本目で降りられた</span>
+        <span style="font-family:var(--mono)">${tagBear2}回 <span style="color:var(--sub);font-size:12px">/ ${closed.length}</span></span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:14px">
+        <span>上ヒゲ陽線で降りられた</span>
+        <span style="font-family:var(--mono)">${tagWick}回 <span style="color:var(--sub);font-size:12px">/ ${closed.length}</span></span>
+      </div>
+    </div>
+
+    <div style="height:8px"></div>
+    <div class="seclabel">バックアップ</div>
+    <button class="btn-secondary" id="st_json" style="margin-bottom:10px">⬇ バックアップを書き出す（JSON・復元用）</button>
+    <button class="btn-secondary" id="st_restore" style="margin-bottom:10px">⬆ バックアップから復元する</button>
+    <button class="btn-secondary" id="st_csv">⬇ CSVで書き出す（表計算で見る用）</button>
+    <div class="smallnote center">記録はこの端末のブラウザ内にだけある。履歴削除や機種変で消えるので、週末などにJSONを書き出してドライブやメールに保管を。消えてもJSONから戻せる。</div>
+  </div>`;
+
+  document.getElementById("st_json").onclick=()=>exportJSON(trades);
+  document.getElementById("st_restore").onclick=()=>importJSONFile();
+  document.getElementById("st_csv").onclick=()=>exportCSV(trades);
+}
+
+function barHTML(ratio,color,thin){
+  const w=Math.max(0,Math.min(1,ratio))*100;
+  return `<div class="bar ${thin?"thin":""}"><span style="width:${w}%;background:${color}"></span></div>`;
+}
+function plBoxHTML(title,g){
+  const win=g.sum>=0, col=win?"var(--gain)":"var(--loss)";
+  return `<div class="plbox">
+    <div style="font-size:12px;color:var(--sub);font-weight:600">${title}</div>
+    <div style="font-size:11px;color:var(--sub);margin-top:2px">${g.n}件</div>
+    <div style="font-family:var(--mono);font-size:19px;font-weight:700;color:${col};margin-top:6px">${g.n===0?"—":fmtYen(g.sum)}</div>
+    <div style="font-size:12px;color:var(--sub);margin-top:4px">平均 ${g.n===0?"—":fmtYen(g.avg)}</div>
+    <div style="font-size:12px;color:var(--sub);margin-top:2px">勝率 ${g.n===0?"—":Math.round(g.winRate*100)+"%"}</div>
+  </div>`;
+}
+function gradeRowHTML(label,g,last){
+  const win=g.sum>=0, col = g.n===0?"var(--sub)":(win?"var(--gain)":"var(--loss)");
+  return `<div class="graderow" style="${last?"border-bottom:none":""}">
+    <span style="font-size:13px">${label}</span>
+    <div style="display:flex;gap:14px;align-items:baseline">
+      <span style="font-size:12px;color:var(--sub)">${g.n}件</span>
+      <span style="font-size:12px;color:var(--sub)">勝率${g.n===0?"—":Math.round(g.winRate*100)+"%"}</span>
+      <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${col};min-width:92px;text-align:right">${g.n===0?"—":fmtYen(g.sum)}</span>
+    </div>
+  </div>`;
+}
+
+/* ---------- ダウンロード共通 ---------- */
+function downloadBlob(blob, filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+/* ---------- CSV ---------- */
+function exportCSV(trades){
+  const head=["id","side","symbol","entryDate","entryPrice","units","pullback",
+    "ruleOrder","ruleSlope","ruleTrigger","ruleCalm","violationCount","isClean",
+    "exitDate","exitPrice","plAmount","plPct","heldDays","noPyramid","tagBear2","tagWick","note"];
+  const e=v=>{ if(v==null) return ""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
+  const rows=trades.map(t=>{
+    const pl=calcPL(t);
+    return [t.id,t.side,t.symbol,t.entryDate,t.entryPrice,t.units,t.pullback,
+      t.rules.order,t.rules.slope,t.rules.trigger,t.rules.calm,
+      violationCount(t.rules),isClean(t.rules),
+      t.exitDate||"",t.exitPrice==null?"":t.exitPrice,
+      pl?Math.round(pl.amount):"",pl?pl.pct.toFixed(2):"",
+      daysBetween(t.entryDate,t.exitDate)??"",
+      t.noPyramid!==false,t.tagBear2,t.tagWick,t.note||""].map(e).join(",");
+  });
+  const csv="\uFEFF"+[head.join(","),...rows].join("\n");
+  downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}), `trade_journal_${todayStr()}.csv`);
+  flash("CSVを書き出した");
+}
+
+/* ---------- JSON バックアップ書き出し ---------- */
+function exportJSON(trades){
+  const payload = {
+    app:"trade-journal",
+    version:1,
+    exportedAt:new Date().toISOString(),
+    count:trades.length,
+    trades:trades,
+  };
+  const json = JSON.stringify(payload,null,2);
+  downloadBlob(new Blob([json],{type:"application/json"}), `trade_journal_backup_${todayStr()}.json`);
+  flash("バックアップを書き出した（"+trades.length+"件）");
+}
+
+/* ---------- JSON 復元（統合：同じidは上書き、新規は追加） ---------- */
+function importJSONFile(){
+  const input=document.createElement("input");
+  input.type="file";
+  input.accept="application/json,.json";
+  input.onchange=()=>{
+    const file=input.files&&input.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=async()=>{
+      try{
+        const data=JSON.parse(reader.result);
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.trades) ? data.trades : null);
+        if(!list){ flash("このファイルは読み込めない（形式が違う）"); return; }
+        const valid = list.filter(t=> t && typeof t.id==="string" && t.rules);
+        if(valid.length===0){ flash("復元できる記録が入っていない"); return; }
+        // 既存と突き合わせて、増える件数・上書き件数を出す
+        const existingIds=new Set(App.trades.map(t=>t.id));
+        let added=0, overwritten=0;
+        valid.forEach(t=> existingIds.has(t.id)?overwritten++:added++);
+        const ok = confirm(
+          `バックアップから復元する。\n`+
+          `・新しく追加：${added}件\n`+
+          `・同じ記録を上書き：${overwritten}件\n\n`+
+          `今ある記録は消えない（同じ記録だけ新しい内容に置き換わる）。実行する？`);
+        if(!ok) return;
+        await dbPutMany(valid);
+        await loadTrades();
+        render();
+        flash(`復元した（追加${added}・上書き${overwritten}）`);
+      }catch(e){
+        flash("読み込みに失敗した："+((e&&e.message)||"不明"));
+      }
+    };
+    reader.onerror=()=>flash("ファイルを読めなかった");
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+/* ---------- 空状態 ---------- */
+function emptyHTML(title,body){
+  return `<div class="empty"><div class="empty-t">${esc(title)}</div><div class="empty-b">${esc(body)}</div></div>`;
+}
+
+/* ---------- PWA: マニフェストを動的に挿入（別ファイル不要） ---------- */
+function installManifest(){
+  try{
+    const icon = document.querySelector('link[rel="apple-touch-icon"]').getAttribute("href");
+    const manifest = {
+      name:"トレード記録", short_name:"トレード記録",
+      start_url:".", scope:".", display:"standalone",
+      background_color:"#F6F1E7", theme_color:"#F6F1E7",
+      icons:[
+        {src:icon, sizes:"180x180", type:"image/svg+xml", purpose:"any"},
+        {src:icon, sizes:"512x512", type:"image/svg+xml", purpose:"any maskable"},
+      ],
+    };
+    const blob = new Blob([JSON.stringify(manifest)],{type:"application/manifest+json"});
+    const link = document.createElement("link");
+    link.rel="manifest"; link.href=URL.createObjectURL(blob);
+    document.head.appendChild(link);
+  }catch(e){ /* マニフェスト挿入失敗は致命的でない */ }
+}
+
+/* ============================================================
+   起動
+   ============================================================ */
+$tabs.querySelectorAll(".tab").forEach(b=>b.onclick=()=>go(b.dataset.screen));
+
+(async function init(){
+  installManifest();
+  render(); // 読み込み中表示
+  try{ await loadTrades(); }catch(e){}
+  App.loaded=true;
+  render();
+})();
+</script>
+</body>
+</html>
