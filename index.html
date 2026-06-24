@@ -131,6 +131,7 @@
     align-items:baseline;justify-content:space-between;}
   .plprev.win{background:#EEF4EF;border:1px solid #CADFCE;}
   .plprev.lose{background:#F6EBEA;border:1px solid #E7CFCB;}
+  .plprev.neutral{background:var(--field);border:1px solid var(--line);}
   .plprev .lab{font-size:11px;color:var(--sub);letter-spacing:1px;}
   .plprev .big{font-family:var(--mono);font-size:26px;font-weight:700;}
   .plprev .pct{font-family:var(--mono);font-size:15px;}
@@ -146,6 +147,14 @@
     padding:16px;margin-bottom:8px;}
   .graderow{display:flex;align-items:center;justify-content:space-between;
     padding:8px 0;border-bottom:1px solid var(--line);}
+  .gradehead{display:grid;grid-template-columns:1fr auto auto auto;gap:12px;align-items:center;
+    padding:0 0 6px;border-bottom:1px solid var(--lineStrong);}
+  .gradehead span{font-size:10px;color:var(--sub);letter-spacing:.5px;}
+  .graderow2{display:grid;grid-template-columns:1fr auto auto auto;gap:12px;align-items:center;
+    padding:9px 0;border-bottom:1px solid var(--line);}
+  .gradehead .gh-pct,.graderow2 .gh-pct{min-width:62px;text-align:right;}
+  .gradehead .gh-win,.graderow2 .gh-win{min-width:50px;text-align:right;}
+  .gradehead .gh-pl,.graderow2 .gh-pl{min-width:84px;text-align:right;}
 
   /* bottom bar */
   .bottombar{position:fixed;left:0;right:0;bottom:0;z-index:6;
@@ -165,6 +174,8 @@
   .delbtn{min-height:44px;padding:0 14px;border-radius:10px;font-size:13px;font-weight:600;
     border:1px solid var(--lineStrong);background:transparent;color:var(--sub);}
   .delbtn.armed{border-color:var(--loss);background:var(--loss);color:var(--ondark);}
+  .btn-edit{min-height:44px;padding:0 14px;border-radius:10px;font-size:13px;font-weight:600;
+    border:1px solid var(--accent);background:transparent;color:var(--accent);}
   .hide{display:none !important;}
   .center{text-align:center;}
   .smallnote{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.6;}
@@ -270,9 +281,16 @@ const RULE_LABELS = {
   },
 };
 const PULLBACK_LABEL = {
-  ideal:"理想形", ideal_sub:"5日線 ≥ 20日線を保って再上昇",
-  allow:"許容形", allow_sub:"5日線が20日線を割って再上昇",
+  ideal:"5日線 ≥ 20日線", ideal_sub:"20日線を割らずに再上昇",
+  allow:"5日線 ＜ 20日線あり", allow_sub:"20日線を割ってから再上昇",
 };
+const PULLBACK_PILL = { ideal:"押し目 5≥20", allow:"押し目 5<20あり" };
+const EXIT_TRIGGER = {
+  wick:{t:"上ヒゲの長い線", s:"陽線・陰線問わず、上に長いヒゲ"},
+  bear2:{t:"陰線2本目", s:"陰線が2本続いた"},
+  ma5:{t:"5日線を終値で割った", s:"短期リズムの崩れ"},
+};
+const EXIT_TRIGGER_KEYS = ["wick","bear2","ma5"];
 const SHORT_RULE = {
   order:"並び（20日線と100日線）", slope:"5日線の向き",
   trigger:"実体半分が5日線の外", calm:"荒れ相場でない",
@@ -317,7 +335,7 @@ function blankTrade(){
     pullback:"ideal",
     rules:{order:null,slope:null,trigger:null,calm:null},
     exitDate:null, exitPrice:null, note:"",
-    noPyramid:true, tagBear2:false, tagWick:false,
+    addedPosition:false, addReasoned:false, exitTrigger:null,
   };
 }
 function esc(s){
@@ -443,6 +461,14 @@ function renderList(){
   open.forEach(t=>{
     const ex=document.getElementById("exit_"+t.id);
     if(ex) ex.onclick=()=>{ startExit(t); };
+    const ed=document.getElementById("edit_"+t.id);
+    if(ed) ed.onclick=()=>{ startEntryEdit(t); };
+  });
+  closed.forEach(t=>{
+    const ee=document.getElementById("editEntry_"+t.id);
+    if(ee) ee.onclick=()=>{ startEntryEdit(t); };
+    const ex=document.getElementById("editExit_"+t.id);
+    if(ex) ex.onclick=()=>{ startExit(t); };
   });
   wireDeletes();
 }
@@ -463,7 +489,7 @@ function openCardHTML(t){
     ${cardTopHTML(t)}
     <div class="pills">
       <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
-      <span class="pill">${PULLBACK_LABEL[t.pullback]}</span>
+      <span class="pill">${PULLBACK_PILL[t.pullback]}</span>
       <span class="pill mono">建値 ${Number(t.entryPrice).toLocaleString("ja-JP")}</span>
       <span class="pill mono">${esc(t.units)}単元</span>
     </div>
@@ -473,6 +499,7 @@ function openCardHTML(t){
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn-primary-sm" id="exit_${t.id}">イグジットを記録</button>
+      <button class="btn-edit" id="edit_${t.id}">編集</button>
       ${delBtnHTML(t.id)}
     </div>
   </div>`;
@@ -485,9 +512,8 @@ function closedCardHTML(t){
   let tags = (v===0
       ? `<span class="tag" style="color:var(--gain);border-color:var(--gain)">ルール通り</span>`
       : `<span class="tag" style="color:var(--loss);border-color:var(--loss)">違反${v}項目</span>`);
-  if(t.noPyramid===false) tags+=`<span class="tag" style="color:var(--warn);border-color:var(--warn)">ナンピンあり</span>`;
-  if(t.tagBear2) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">陰線2本目で降りられた</span>`;
-  if(t.tagWick) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">上ヒゲ陽線で降りられた</span>`;
+  if(t.addedPosition) tags+=`<span class="tag" style="color:${t.addReasoned?"var(--sub)":"var(--loss)"};border-color:${t.addReasoned?"var(--sub)":"var(--loss)"}">${t.addReasoned?"買い増しあり（根拠あり）":"根拠なき買い増し"}</span>`;
+  if(t.exitTrigger && EXIT_TRIGGER[t.exitTrigger]) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">出口：${EXIT_TRIGGER[t.exitTrigger].t}</span>`;
   return `<div class="card" style="border-left:4px solid ${cardBorderColor(v)}">
     ${cardTopHTML(t)}
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:8px">
@@ -496,13 +522,17 @@ function closedCardHTML(t){
     </div>
     <div class="pills">
       <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
-      <span class="pill">${PULLBACK_LABEL[t.pullback]}</span>
+      <span class="pill">${PULLBACK_PILL[t.pullback]}</span>
       <span class="pill mono">${Number(t.entryPrice).toLocaleString("ja-JP")} → ${Number(t.exitPrice).toLocaleString("ja-JP")}</span>
       ${held!=null?`<span class="pill">${held}日保有</span>`:""}
     </div>
     <div class="statusline">${tags}</div>
     ${t.note?`<div class="note-box">${esc(t.note)}</div>`:""}
-    <div style="display:flex;justify-content:flex-end;margin-top:10px">${delBtnHTML(t.id)}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+      <button class="btn-edit" id="editEntry_${t.id}">エントリー編集</button>
+      <button class="btn-edit" id="editExit_${t.id}">イグジット編集</button>
+      ${delBtnHTML(t.id)}
+    </div>
   </div>`;
 }
 
@@ -521,8 +551,13 @@ function wireDeletes(){
 }
 
 /* ---------- エントリーフォーム ---------- */
+function startEntryEdit(t){
+  App.draft = { ...t, units:String(t.units), entryPrice:String(t.entryPrice), isEdit:true };
+  go("entry");
+}
 function renderEntry(){
   const d = App.draft;
+  const editing = !!d.isEdit;
   const labels = RULE_LABELS[d.side];
   const unchecked = uncheckedCount(d.rules), v = violationCount(d.rules);
   const statusRight = unchecked>0 ? "" :
@@ -565,7 +600,7 @@ function renderEntry(){
     <div style="height:14px"></div>
     <div style="display:flex;gap:10px">
       <button class="btn-ghost" id="f_cancel">やめる</button>
-      <button class="btn btn-primary" id="f_save">記録する</button>
+      <button class="btn btn-primary" id="f_save">${editing?"保存する":"記録する"}</button>
     </div>
     <div class="smallnote center" id="f_hint"></div>
   </div>`;
@@ -593,7 +628,8 @@ function renderEntry(){
   });
   saveBtn.onclick=()=>{
     if(saveBtn.disabled) return;
-    commitTrade({...d}, "エントリーを記録した");
+    const out = {...d}; delete out.isEdit;
+    commitTrade(out, editing?"エントリーを更新した":"エントリーを記録した");
   };
 }
 
@@ -623,17 +659,35 @@ function startExit(t){
   App.draft = {
     ...t,
     exitDate: t.exitDate||todayStr(),
-    exitPrice: t.exitPrice==null?"":t.exitPrice,
+    exitPrice: t.exitPrice==null?"":String(t.exitPrice),
+    units: String(t.units),
+    entryPrice: String(t.entryPrice),
     note: t.note||"",
-    noPyramid: t.noPyramid!==false,
-    tagBear2: !!t.tagBear2, tagWick: !!t.tagWick,
+    addedPosition: !!t.addedPosition,
+    addReasoned: !!t.addReasoned,
+    exitTrigger: t.exitTrigger||null,
+    isExitEdit: t.exitPrice!=null,
   };
   go("exit");
 }
 
+function hasExitPrice(d){ return d.exitPrice!=="" && d.exitPrice!=null && Number(d.exitPrice)>0; }
+
 function renderExit(){
   const d = App.draft;
+  const editing = !!d.isExitEdit;
   function plPreview(){
+    if(!hasExitPrice(d)){
+      return `<div class="plprev neutral">
+        <div>
+          <div class="lab">損益</div>
+          <div class="big" style="color:var(--sub)">—</div>
+        </div>
+        <div style="text-align:right;max-width:55%">
+          <div style="font-size:12px;color:var(--sub);line-height:1.5">イグジット単価を入れると計算される</div>
+        </div>
+      </div>`;
+    }
     const pl = calcPL({...d, exitPrice:Number(d.exitPrice)});
     const held = daysBetween(d.entryDate,d.exitDate);
     const win = pl && pl.amount>=0;
@@ -649,6 +703,16 @@ function renderExit(){
       </div>
     </div>`;
   }
+  function addReasonHTML(){
+    if(!d.addedPosition) return "";
+    return `<div style="margin-top:10px">
+      <button class="checkrow ${d.addReasoned?"on":""}" id="x_addReasoned">
+        <span class="box">${d.addReasoned?"✓":""}</span>
+        <span class="lbl">その買い増しには根拠があった（取り返したい等の衝動ではない）</span>
+      </button>
+      ${d.addReasoned?"":`<div class="rulehint" style="color:var(--loss)">根拠なき買い増しは禁止。チェックが付かない買い増しは要注意として記録される。</div>`}
+    </div>`;
+  }
 
   $main.innerHTML = `<div class="pad2">
     <div class="card" style="border-left:4px solid ${cardBorderColor(violationCount(d.rules))}">
@@ -657,7 +721,11 @@ function renderExit(){
         <span class="pill">${d.side==="buy"?"買い":"売り"}</span>
         <span class="pill mono">建値 ${Number(d.entryPrice).toLocaleString("ja-JP")}</span>
         <span class="pill mono">${esc(d.units)}単元</span>
-        <span class="pill">${PULLBACK_LABEL[d.pullback]}</span>
+      </div>
+      <div style="margin-top:10px;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:10px">
+        <div style="font-size:11px;color:var(--sub);margin-bottom:3px">この取引の押し目</div>
+        <div style="font-size:14px;font-weight:700">${PULLBACK_LABEL[d.pullback]}</div>
+        <div style="font-size:12px;color:var(--sub);margin-top:1px">${PULLBACK_LABEL[d.pullback+"_sub"]}</div>
       </div>
     </div>
 
@@ -672,25 +740,15 @@ function renderExit(){
 
     <div style="margin-top:16px">
       <span class="seclabel inline">建玉操作</span>
-      <div class="rulehint">保有中にナンピン・増し玉をせず、単発を貫けたか。</div>
-      <button class="checkrow ${d.noPyramid?"on":""}" id="x_noPyramid">
-        <span class="box">${d.noPyramid?"✓":""}</span>
-        <span class="lbl">ナンピン・増し玉せず、単発のまま手仕舞った</span>
+      <div class="rulehint">買い増し自体は否定しない。根拠のない買い増しをしなかったかを記録する。</div>
+      <button class="checkrow ${d.addedPosition?"on":""}" id="x_addedPosition">
+        <span class="box">${d.addedPosition?"✓":""}</span>
+        <span class="lbl">エントリー後に買い増し・ナンピンをした</span>
       </button>
+      <div id="x_addReason">${addReasonHTML()}</div>
     </div>
 
-    <div style="margin-top:16px">
-      <span class="seclabel inline">持ちすぎ検証（任意）</span>
-      <div class="rulehint">その足の終値で降りていたら、実際より高く（売りなら安く）逃げられたか。撤退ルールではなく検証メモ。</div>
-      <button class="checkrow ${d.tagBear2?"on":""}" id="x_tagBear2">
-        <span class="box">${d.tagBear2?"✓":""}</span>
-        <span class="lbl">陰線2本目の終値が、実際のイグジットより有利だった</span>
-      </button>
-      <button class="checkrow ${d.tagWick?"on":""}" id="x_tagWick">
-        <span class="box">${d.tagWick?"✓":""}</span>
-        <span class="lbl">上ヒゲの長い陽線の終値が、実際のイグジットより有利だった</span>
-      </button>
-    </div>
+    <div id="x_exitForm">${exitTriggerHTML()}</div>
 
     <div class="field"><div class="field-label">反省メモ（任意）</div>
       <textarea class="input" id="x_note" placeholder="例）5日線終値割れで規律どおり撤退。粘らなかった。">${esc(d.note)}</textarea></div>
@@ -698,27 +756,79 @@ function renderExit(){
     <div style="height:6px"></div>
     <div style="display:flex;gap:10px">
       <button class="btn-ghost" id="x_cancel">やめる</button>
-      <button class="btn btn-primary" id="x_save">イグジットを記録</button>
+      <button class="btn btn-primary" id="x_save">${editing?"保存する":"イグジットを記録"}</button>
     </div>
+    <div class="smallnote center" id="x_hint"></div>
   </div>`;
 
-  bindInput("x_exitDate", val=>{ d.exitDate=val; document.getElementById("x_preview").innerHTML=plPreview(); });
-  bindInput("x_exitPrice", val=>{ d.exitPrice=val; document.getElementById("x_preview").innerHTML=plPreview(); });
+  bindInput("x_exitDate", val=>{ d.exitDate=val; refreshPreviewAndExit(); });
+  bindInput("x_exitPrice", val=>{ d.exitPrice=val; refreshPreviewAndExit(); });
   bindInput("x_note", val=>d.note=val);
-  toggleCheck("x_noPyramid", ()=>{ d.noPyramid=!d.noPyramid; renderExit(); });
-  toggleCheck("x_tagBear2", ()=>{ d.tagBear2=!d.tagBear2; renderExit(); });
-  toggleCheck("x_tagWick", ()=>{ d.tagWick=!d.tagWick; renderExit(); });
+  toggleCheck("x_addedPosition", ()=>{ d.addedPosition=!d.addedPosition; if(!d.addedPosition) d.addReasoned=false; renderExit(); });
+  toggleCheck("x_addReasoned", ()=>{ d.addReasoned=!d.addReasoned; renderExit(); });
+  wireExitTrigger();
 
   document.getElementById("x_cancel").onclick=()=>go("list");
   const saveBtn=document.getElementById("x_save");
-  const refreshSave=()=>{ saveBtn.disabled = !(Number(d.exitPrice)>0 && d.exitDate); };
+  function refreshSave(){
+    const ok = hasExitPrice(d) && d.exitDate && !!d.exitTrigger;
+    saveBtn.disabled = !ok;
+    const hint=document.getElementById("x_hint");
+    if(hint) hint.textContent = (hasExitPrice(d) && d.exitDate && !d.exitTrigger) ? "出口の形を選ぶと記録できる。" : "";
+  }
+  function refreshPreviewAndExit(){
+    // 損切りなら出口を5日線割れに自動確定、利確に変わったら選び直し
+    if(hasExitPrice(d)){
+      const pl = calcPL({...d, exitPrice:Number(d.exitPrice)});
+      if(pl && pl.amount<0){ d.exitTrigger="ma5"; }
+      else if(d.exitTrigger==="ma5" && pl && pl.amount>=0 && d._autoMa5){ d.exitTrigger=null; }
+    }
+    document.getElementById("x_preview").innerHTML=plPreview();
+    document.getElementById("x_exitForm").innerHTML=exitTriggerHTML();
+    wireExitTrigger();
+    refreshSave();
+  }
   refreshSave();
-  document.getElementById("x_exitPrice").addEventListener("input",refreshSave);
   document.getElementById("x_exitDate").addEventListener("input",refreshSave);
   saveBtn.onclick=()=>{
     if(saveBtn.disabled) return;
-    commitTrade({...d, exitPrice:Number(d.exitPrice)}, "イグジットを記録した");
+    const out = {...d, exitPrice:Number(d.exitPrice)};
+    delete out.isExitEdit; delete out._autoMa5;
+    commitTrade(out, editing?"イグジットを更新した":"イグジットを記録した");
   };
+
+  function exitTriggerHTML(){
+    if(!hasExitPrice(d)) return "";
+    const pl = calcPL({...d, exitPrice:Number(d.exitPrice)});
+    const isLoss = pl && pl.amount<0;
+    if(isLoss){
+      d.exitTrigger="ma5"; d._autoMa5=true;
+      return `<div style="margin-top:16px">
+        <span class="seclabel inline">出口の形</span>
+        <div class="rulehint">損切りは5日線終値割れに統一。想定と違う動きをしたら潔く撤退。</div>
+        <div style="padding:11px 12px;border-radius:10px;border:1.5px solid var(--accent);background:var(--accentSoft)">
+          <div style="font-size:14px;font-weight:700;color:var(--accent)">${EXIT_TRIGGER.ma5.t}</div>
+          <div style="font-size:12px;color:var(--sub);margin-top:2px">${EXIT_TRIGGER.ma5.s}</div>
+        </div>
+      </div>`;
+    }
+    d._autoMa5=false;
+    return `<div style="margin-top:16px">
+      <span class="seclabel inline">出口の形</span>
+      <div class="rulehint">どの形で利確したか。検証用に必ず1つ選ぶ。</div>
+      <div class="pullback" style="flex-direction:column;gap:8px" id="x_trigGroup">
+        ${EXIT_TRIGGER_KEYS.map(k=>`
+          <button data-trig="${k}" class="${d.exitTrigger===k?"active":""}" style="width:100%">
+            <div class="pb-t">${EXIT_TRIGGER[k].t}</div><div class="pb-s">${EXIT_TRIGGER[k].s}</div>
+          </button>`).join("")}
+      </div>
+    </div>`;
+  }
+  function wireExitTrigger(){
+    $main.querySelectorAll("[data-trig]").forEach(b=>{
+      b.onclick=()=>{ d.exitTrigger=b.dataset.trig; renderExit(); };
+    });
+  }
 }
 
 function toggleCheck(id, fn){ const el=document.getElementById(id); if(el) el.onclick=fn; }
@@ -757,13 +867,34 @@ function renderStats(){
     many:agg(closed.filter(t=>violationCount(t.rules)>=3)),
   };
   const byPull={ ideal:agg(closed.filter(t=>t.pullback==="ideal")), allow:agg(closed.filter(t=>t.pullback==="allow")) };
-  const tagBear2=closed.filter(t=>t.tagBear2).length, tagWick=closed.filter(t=>t.tagWick).length;
+  const byExit={};
+  EXIT_TRIGGER_KEYS.forEach(k=> byExit[k]=agg(closed.filter(t=>t.exitTrigger===k)));
+  const totalAgg=agg(closed);
+  const addedClosed=closed.filter(t=>t.addedPosition);
+  const byAdd={
+    none:agg(closed.filter(t=>!t.addedPosition)),
+    reasoned:agg(closed.filter(t=>t.addedPosition && t.addReasoned)),
+    unreasoned:agg(closed.filter(t=>t.addedPosition && !t.addReasoned)),
+  };
+  const unreasonedCount=trades.filter(t=>t.addedPosition && !t.addReasoned).length;
 
   const pct=x=>Math.round(x*100)+"%";
 
   $main.innerHTML = `<div class="pad">
     <div class="statcard">
-      <div style="font-size:12px;color:var(--sub);letter-spacing:1px">遵守率（全項目○の割合）</div>
+      <div style="font-size:12px;color:var(--sub);letter-spacing:1px">トータル成績（${closed.length}件）</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px">
+        <div style="font-family:var(--mono);font-size:38px;font-weight:700;color:var(--ink)">${totalAgg.n===0?"—":pct(totalAgg.winRate)}</div>
+        <div style="font-size:13px;color:var(--sub)">勝率</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px;font-size:13px;color:var(--sub);align-items:baseline">
+        <span>損益</span>
+        <span style="font-family:var(--mono);font-size:16px;font-weight:600;color:${totalAgg.n===0?"var(--sub)":(totalAgg.sum>=0?"var(--gain)":"var(--loss)")}">${totalAgg.n===0?"—":fmtYen(totalAgg.sum)}</span>
+      </div>
+    </div>
+
+    <div class="statcard">
+      <div style="font-size:12px;color:var(--sub);letter-spacing:1px">ルール遵守率（全項目○の割合）</div>
       <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px">
         <div style="font-family:var(--mono);font-size:38px;font-weight:700;color:var(--accent)">${total===0?"—":pct(compliance)}</div>
         <div style="font-size:13px;color:var(--sub)">${cleanCount} / ${total} トレード</div>
@@ -772,11 +903,11 @@ function renderStats(){
       <div style="font-size:12px;color:var(--sub);margin-top:8px;line-height:1.6">評価軸はここ。勝ち負けではなく、守れた回数で自分を見る。</div>
     </div>
 
-    <div class="seclabel">ルール通り vs 違反（決済済みのみ）</div>
-    ${closed.length===0?`<div class="muted">決済済みの取引がまだない。決済するとここに損益が出る。</div>`:""}
+    <div class="seclabel">ルール通り vs 違反あり</div>
+    ${closed.length===0?`<div class="muted">決済した取引がまだない。決済するとここに損益が出る。</div>`:""}
     <div style="display:flex;gap:10px">
-      ${plBoxHTML("ルール通り",cleanAgg)}
-      ${plBoxHTML("違反あり",dirtyAgg)}
+      ${plBoxHTML("ルール通り",cleanAgg,closed.length)}
+      ${plBoxHTML("違反あり",dirtyAgg,closed.length)}
     </div>
     <div style="font-size:12px;color:var(--sub);margin:8px 2px 18px;line-height:1.6">連敗したら「ルール通り」の列を見る。ここがプラス基調なら手法は壊れていない。</div>
 
@@ -794,29 +925,41 @@ function renderStats(){
       }).join("")}
     </div>
 
-    <div class="seclabel">違反数 × 成績（決済済み）</div>
+    <div class="seclabel">違反数 × 成績</div>
     <div class="statcard">
-      ${gradeRowHTML("違反 0個",byViol.clean)}
-      ${gradeRowHTML("違反 1〜2個",byViol.few)}
-      ${gradeRowHTML("違反 3個以上",byViol.many,true)}
+      ${gradeTableHTML([
+        {label:"違反 0個",g:byViol.clean},
+        {label:"違反 1〜2個",g:byViol.few},
+        {label:"違反 3個以上",g:byViol.many},
+      ])}
     </div>
 
-    <div class="seclabel">押し目の形 × 成績（決済済み）</div>
+    <div class="seclabel">押し目の形 × 成績</div>
     <div class="statcard">
-      ${gradeRowHTML("理想形",byPull.ideal)}
-      ${gradeRowHTML("許容形",byPull.allow,true)}
+      ${gradeTableHTML([
+        {label:"5日線 ≥ 20日線を保った",g:byPull.ideal},
+        {label:"5日線が20日線を割った",g:byPull.allow},
+      ])}
     </div>
 
-    <div class="seclabel">持ちすぎタグの頻度（決済済み）</div>
+    <div class="seclabel">買い増し × 成績（検証用）</div>
     <div class="statcard">
-      <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:8px">
-        <span>陰線2本目で降りられた</span>
-        <span style="font-family:var(--mono)">${tagBear2}回 <span style="color:var(--sub);font-size:12px">/ ${closed.length}</span></span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:14px">
-        <span>上ヒゲ陽線で降りられた</span>
-        <span style="font-family:var(--mono)">${tagWick}回 <span style="color:var(--sub);font-size:12px">/ ${closed.length}</span></span>
-      </div>
+      ${gradeTableHTML([
+        {label:"買い増しなし",g:byAdd.none},
+        {label:"買い増しあり（根拠あり）",g:byAdd.reasoned},
+        {label:"根拠なき買い増し",g:byAdd.unreasoned},
+      ])}
+      ${unreasonedCount>0?`<div class="rulehint" style="color:var(--loss);margin-top:10px">根拠なき買い増しが${unreasonedCount}回ある。買い増し自体は否定しないが、衝動による買い増しが成績を崩していないかここで確認する。</div>`:`<div class="rulehint" style="margin-top:10px">根拠なき買い増しは0回。建玉操作の規律を保てている。</div>`}
+    </div>
+
+    <div class="seclabel">出口の形 × 成績</div>
+    <div class="statcard">
+      ${gradeTableHTML([
+        {label:EXIT_TRIGGER.wick.t,g:byExit.wick},
+        {label:EXIT_TRIGGER.bear2.t,g:byExit.bear2},
+        {label:EXIT_TRIGGER.ma5.t,g:byExit.ma5},
+      ])}
+      <div class="rulehint" style="margin-top:10px">上ヒゲ・陰線2本目で早めに降りた利確と、5日線割れまで持った利確で、どちらが伸びているか比較する。データが溜まったら早降りルール化の判断材料に。</div>
     </div>
 
     <div style="height:8px"></div>
@@ -836,26 +979,39 @@ function barHTML(ratio,color,thin){
   const w=Math.max(0,Math.min(1,ratio))*100;
   return `<div class="bar ${thin?"thin":""}"><span style="width:${w}%;background:${color}"></span></div>`;
 }
-function plBoxHTML(title,g){
+function plBoxHTML(title,g,total){
   const win=g.sum>=0, col=win?"var(--gain)":"var(--loss)";
+  const ratio = total>0 ? Math.round(g.n/total*100) : 0;
   return `<div class="plbox">
     <div style="font-size:12px;color:var(--sub);font-weight:600">${title}</div>
-    <div style="font-size:11px;color:var(--sub);margin-top:2px">${g.n}件</div>
-    <div style="font-family:var(--mono);font-size:19px;font-weight:700;color:${col};margin-top:6px">${g.n===0?"—":fmtYen(g.sum)}</div>
-    <div style="font-size:12px;color:var(--sub);margin-top:4px">平均 ${g.n===0?"—":fmtYen(g.avg)}</div>
-    <div style="font-size:12px;color:var(--sub);margin-top:2px">勝率 ${g.n===0?"—":Math.round(g.winRate*100)+"%"}</div>
+    <div style="font-size:11px;color:var(--sub);margin-top:2px">${g.n}件${total>0?`・${ratio}%`:""}</div>
+    <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:var(--ink);margin-top:8px">${g.n===0?"—":Math.round(g.winRate*100)+"%"}</div>
+    <div style="font-size:11px;color:var(--sub);margin-top:1px">勝率</div>
+    <div style="font-family:var(--mono);font-size:15px;font-weight:600;color:${col};margin-top:8px">${g.n===0?"—":fmtYen(g.sum)}</div>
   </div>`;
 }
-function gradeRowHTML(label,g,last){
-  const win=g.sum>=0, col = g.n===0?"var(--sub)":(win?"var(--gain)":"var(--loss)");
-  return `<div class="graderow" style="${last?"border-bottom:none":""}">
-    <span style="font-size:13px">${label}</span>
-    <div style="display:flex;gap:14px;align-items:baseline">
-      <span style="font-size:12px;color:var(--sub)">${g.n}件</span>
-      <span style="font-size:12px;color:var(--sub)">勝率${g.n===0?"—":Math.round(g.winRate*100)+"%"}</span>
-      <span style="font-family:var(--mono);font-size:14px;font-weight:700;color:${col};min-width:92px;text-align:right">${g.n===0?"—":fmtYen(g.sum)}</span>
-    </div>
+
+/* 成績テーブル：見出し行を一度だけ出し、各行は列揃え。割合は表内合計が100%になる */
+function gradeTableHTML(rows){
+  const totalN = rows.reduce((s,r)=>s+r.g.n,0);
+  const head = `<div class="gradehead">
+    <span class="gh-label"></span>
+    <span class="gh-pct">割合</span>
+    <span class="gh-win">勝率</span>
+    <span class="gh-pl">損益</span>
   </div>`;
+  const body = rows.map((r,i)=>{
+    const g=r.g, last=(i===rows.length-1);
+    const win=g.sum>=0, col=g.n===0?"var(--sub)":(win?"var(--gain)":"var(--loss)");
+    const ratio = totalN>0 ? Math.round(g.n/totalN*100) : 0;
+    return `<div class="graderow2" style="${last?"border-bottom:none":""}">
+      <span class="gh-label" style="font-size:13px">${r.label}</span>
+      <span class="gh-pct" style="font-family:var(--mono);font-size:13px;color:var(--sub)">${totalN>0?ratio+"%":"—"}<span style="font-size:10px;color:var(--sub)"> (${g.n})</span></span>
+      <span class="gh-win" style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--ink)">${g.n===0?"—":Math.round(g.winRate*100)+"%"}</span>
+      <span class="gh-pl" style="font-family:var(--mono);font-size:13px;font-weight:600;color:${col}">${g.n===0?"—":fmtYen(g.sum)}</span>
+    </div>`;
+  }).join("");
+  return head+body;
 }
 
 /* ---------- ダウンロード共通 ---------- */
@@ -871,7 +1027,7 @@ function downloadBlob(blob, filename){
 function exportCSV(trades){
   const head=["id","side","symbol","entryDate","entryPrice","units","pullback",
     "ruleOrder","ruleSlope","ruleTrigger","ruleCalm","violationCount","isClean",
-    "exitDate","exitPrice","plAmount","plPct","heldDays","noPyramid","tagBear2","tagWick","note"];
+    "exitDate","exitPrice","plAmount","plPct","heldDays","addedPosition","addReasoned","exitTrigger","note"];
   const e=v=>{ if(v==null) return ""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
   const rows=trades.map(t=>{
     const pl=calcPL(t);
@@ -881,7 +1037,7 @@ function exportCSV(trades){
       t.exitDate||"",t.exitPrice==null?"":t.exitPrice,
       pl?Math.round(pl.amount):"",pl?pl.pct.toFixed(2):"",
       daysBetween(t.entryDate,t.exitDate)??"",
-      t.noPyramid!==false,t.tagBear2,t.tagWick,t.note||""].map(e).join(",");
+      !!t.addedPosition,!!t.addReasoned,t.exitTrigger||"",t.note||""].map(e).join(",");
   });
   const csv="\uFEFF"+[head.join(","),...rows].join("\n");
   downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}), `trade_journal_${todayStr()}.csv`);
