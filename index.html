@@ -281,16 +281,34 @@ const RULE_LABELS = {
   },
 };
 const PULLBACK_LABEL = {
-  ideal:"5日線 ≥ 20日線", ideal_sub:"20日線を割らずに再上昇",
-  allow:"5日線 ＜ 20日線あり", allow_sub:"20日線を割ってから再上昇",
+  buy:{
+    ideal:"5日線 ≥ 20日線", ideal_sub:"20日線を割らずに再上昇",
+    allow:"5日線 ＜ 20日線あり", allow_sub:"20日線を割ってから再上昇",
+  },
+  sell:{
+    ideal:"5日線 ≤ 20日線", ideal_sub:"20日線を超えずに再下落",
+    allow:"5日線 ＞ 20日線あり", allow_sub:"20日線を超えてから再下落",
+  },
 };
-const PULLBACK_PILL = { ideal:"押し目 5≥20", allow:"押し目 5<20あり" };
+const PULLBACK_PILL = {
+  buy:{ ideal:"押し目 5≥20", allow:"押し目 5<20あり" },
+  sell:{ ideal:"戻り 5≤20", allow:"戻り 5>20あり" },
+};
+function pbLabel(side,key){ return (PULLBACK_LABEL[side]||PULLBACK_LABEL.buy)[key]; }
+function pbPill(side,pullback){ return (PULLBACK_PILL[side]||PULLBACK_PILL.buy)[pullback]; }
 const EXIT_TRIGGER = {
   wick:{t:"上ヒゲの長い線", s:"陽線・陰線問わず、上に長いヒゲ"},
   bear2:{t:"陰線2本目", s:"陰線が2本続いた"},
   ma5:{t:"5日線を終値で割った", s:"短期リズムの崩れ"},
+  other:{t:"その他", s:"上記以外（コメントを残す）"},
 };
-const EXIT_TRIGGER_KEYS = ["wick","bear2","ma5"];
+const EXIT_TRIGGER_KEYS = ["wick","bear2","ma5","other"];
+/* 旧データ(単一文字列)も配列として読む */
+function exitTrigList(t){
+  if(Array.isArray(t.exitTriggers)) return t.exitTriggers;
+  if(t.exitTrigger) return [t.exitTrigger];
+  return [];
+}
 const SHORT_RULE = {
   order:"並び（20日線と100日線）", slope:"5日線の向き",
   trigger:"実体半分が5日線の外", calm:"荒れ相場でない",
@@ -318,12 +336,12 @@ function todayStr(){
 }
 function fmtYen(n){
   if(n==null) return "—";
-  const r=Math.round(n); const s = r<0?"−":r>0?"+":"±";
+  const r=Math.round(n); const s = r<0?"▲":r>0?"+":"±";
   return s+"¥"+Math.abs(r).toLocaleString("ja-JP");
 }
 function fmtPct(n){
   if(n==null) return "—";
-  const s=n<0?"−":n>0?"+":"±";
+  const s=n<0?"▲":n>0?"+":"±";
   return s+Math.abs(n).toFixed(2)+"%";
 }
 function cardBorderColor(v){ return v===0?"var(--gain)":v<=2?"var(--warn)":"var(--loss)"; }
@@ -335,7 +353,7 @@ function blankTrade(){
     pullback:"ideal",
     rules:{order:null,slope:null,trigger:null,calm:null},
     exitDate:null, exitPrice:null, note:"",
-    addedPosition:false, addReasoned:false, exitTrigger:null,
+    addedPosition:false, addReasoned:false, exitTriggers:[], exitOtherNote:"",
   };
 }
 function esc(s){
@@ -489,7 +507,7 @@ function openCardHTML(t){
     ${cardTopHTML(t)}
     <div class="pills">
       <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
-      <span class="pill">${PULLBACK_PILL[t.pullback]}</span>
+      <span class="pill">${pbPill(t.side,t.pullback)}</span>
       <span class="pill mono">建値 ${Number(t.entryPrice).toLocaleString("ja-JP")}</span>
       <span class="pill mono">${esc(t.units)}単元</span>
     </div>
@@ -513,7 +531,7 @@ function closedCardHTML(t){
       ? `<span class="tag" style="color:var(--gain);border-color:var(--gain)">ルール通り</span>`
       : `<span class="tag" style="color:var(--loss);border-color:var(--loss)">違反${v}項目</span>`);
   if(t.addedPosition) tags+=`<span class="tag" style="color:${t.addReasoned?"var(--sub)":"var(--loss)"};border-color:${t.addReasoned?"var(--sub)":"var(--loss)"}">${t.addReasoned?"買い増しあり（根拠あり）":"根拠なき買い増し"}</span>`;
-  if(t.exitTrigger && EXIT_TRIGGER[t.exitTrigger]) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">出口：${EXIT_TRIGGER[t.exitTrigger].t}</span>`;
+  exitTrigList(t).forEach(k=>{ if(EXIT_TRIGGER[k]) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">出口：${EXIT_TRIGGER[k].t}</span>`; });
   return `<div class="card" style="border-left:4px solid ${cardBorderColor(v)}">
     ${cardTopHTML(t)}
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:8px">
@@ -522,7 +540,7 @@ function closedCardHTML(t){
     </div>
     <div class="pills">
       <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
-      <span class="pill">${PULLBACK_PILL[t.pullback]}</span>
+      <span class="pill">${pbPill(t.side,t.pullback)}</span>
       <span class="pill mono">${Number(t.entryPrice).toLocaleString("ja-JP")} → ${Number(t.exitPrice).toLocaleString("ja-JP")}</span>
       ${held!=null?`<span class="pill">${held}日保有</span>`:""}
     </div>
@@ -583,12 +601,12 @@ function renderEntry(){
     <div class="field"><div class="field-label">エントリー単価</div>
       <input class="input num" id="f_entryPrice" type="number" step="0.1" inputmode="decimal" style="font-size:18px" value="${esc(d.entryPrice)}" placeholder="株価"></div>
 
-    <div class="field"><div class="field-label">押し目の形</div>
+    <div class="field"><div class="field-label">${d.side==="sell"?"戻りの形":"押し目の形"}</div>
       <div class="pullback" id="f_pullback">
         <button data-pb="ideal" class="${d.pullback==="ideal"?"active":""}">
-          <div class="pb-t">${PULLBACK_LABEL.ideal}</div><div class="pb-s">${PULLBACK_LABEL.ideal_sub}</div></button>
+          <div class="pb-t">${pbLabel(d.side,"ideal")}</div><div class="pb-s">${pbLabel(d.side,"ideal_sub")}</div></button>
         <button data-pb="allow" class="${d.pullback==="allow"?"active":""}">
-          <div class="pb-t">${PULLBACK_LABEL.allow}</div><div class="pb-s">${PULLBACK_LABEL.allow_sub}</div></button>
+          <div class="pb-t">${pbLabel(d.side,"allow")}</div><div class="pb-s">${pbLabel(d.side,"allow_sub")}</div></button>
       </div></div>
 
     <div style="margin-top:16px">
@@ -665,7 +683,8 @@ function startExit(t){
     note: t.note||"",
     addedPosition: !!t.addedPosition,
     addReasoned: !!t.addReasoned,
-    exitTrigger: t.exitTrigger||null,
+    exitTriggers: exitTrigList(t).slice(),
+    exitOtherNote: t.exitOtherNote||"",
     isExitEdit: t.exitPrice!=null,
   };
   go("exit");
@@ -723,9 +742,9 @@ function renderExit(){
         <span class="pill mono">${esc(d.units)}単元</span>
       </div>
       <div style="margin-top:10px;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:10px">
-        <div style="font-size:11px;color:var(--sub);margin-bottom:3px">この取引の押し目</div>
-        <div style="font-size:14px;font-weight:700">${PULLBACK_LABEL[d.pullback]}</div>
-        <div style="font-size:12px;color:var(--sub);margin-top:1px">${PULLBACK_LABEL[d.pullback+"_sub"]}</div>
+        <div style="font-size:11px;color:var(--sub);margin-bottom:3px">この取引の${d.side==="sell"?"戻り":"押し目"}</div>
+        <div style="font-size:14px;font-weight:700">${pbLabel(d.side,d.pullback)}</div>
+        <div style="font-size:12px;color:var(--sub);margin-top:1px">${pbLabel(d.side,d.pullback+"_sub")}</div>
       </div>
     </div>
 
@@ -771,17 +790,30 @@ function renderExit(){
   document.getElementById("x_cancel").onclick=()=>go("list");
   const saveBtn=document.getElementById("x_save");
   function refreshSave(){
-    const ok = hasExitPrice(d) && d.exitDate && !!d.exitTrigger;
+    const trigOk = d.exitTriggers.length>0 && (!d.exitTriggers.includes("other") || d.exitOtherNote.trim());
+    const ok = hasExitPrice(d) && d.exitDate && trigOk;
     saveBtn.disabled = !ok;
     const hint=document.getElementById("x_hint");
-    if(hint) hint.textContent = (hasExitPrice(d) && d.exitDate && !d.exitTrigger) ? "出口の形を選ぶと記録できる。" : "";
+    if(hint){
+      if(hasExitPrice(d) && d.exitDate && d.exitTriggers.length===0) hint.textContent="出口の形を選ぶと記録できる。";
+      else if(d.exitTriggers.includes("other") && !d.exitOtherNote.trim()) hint.textContent="「その他」はコメントを入れると記録できる。";
+      else hint.textContent="";
+    }
   }
   function refreshPreviewAndExit(){
-    // 損切りなら出口を5日線割れに自動確定、利確に変わったら選び直し
     if(hasExitPrice(d)){
       const pl = calcPL({...d, exitPrice:Number(d.exitPrice)});
-      if(pl && pl.amount<0){ d.exitTrigger="ma5"; }
-      else if(d.exitTrigger==="ma5" && pl && pl.amount>=0 && d._autoMa5){ d.exitTrigger=null; }
+      if(pl && pl.amount<0){
+        // 損切り：ma5を土台に固定。otherなど既存選択は残す。利確専用のwick/bear2は除く
+        const keepOther = d.exitTriggers.includes("other");
+        d.exitTriggers = ["ma5", ...(keepOther?["other"]:[])];
+        d._autoMa5=true;
+      } else if(d._autoMa5){
+        // 損切り→利確に変わった：自動で入れたma5を外す。otherは残す
+        const keepOther = d.exitTriggers.includes("other");
+        d.exitTriggers = keepOther?["other"]:[];
+        d._autoMa5=false;
+      }
     }
     document.getElementById("x_preview").innerHTML=plPreview();
     document.getElementById("x_exitForm").innerHTML=exitTriggerHTML();
@@ -793,7 +825,8 @@ function renderExit(){
   saveBtn.onclick=()=>{
     if(saveBtn.disabled) return;
     const out = {...d, exitPrice:Number(d.exitPrice)};
-    delete out.isExitEdit; delete out._autoMa5;
+    if(!out.exitTriggers.includes("other")) out.exitOtherNote="";
+    delete out.isExitEdit; delete out._autoMa5; delete out.exitTrigger;
     commitTrade(out, editing?"イグジットを更新した":"イグジットを記録した");
   };
 
@@ -802,32 +835,59 @@ function renderExit(){
     const pl = calcPL({...d, exitPrice:Number(d.exitPrice)});
     const isLoss = pl && pl.amount<0;
     if(isLoss){
-      d.exitTrigger="ma5"; d._autoMa5=true;
+      // 損切りは5日線割れが土台。利確専用(wick/bear2)は除き、otherのみ追加可
+      const keepOther = d.exitTriggers.includes("other");
+      d.exitTriggers = ["ma5", ...(keepOther?["other"]:[])];
+      d._autoMa5=true;
+      const showOther = d.exitTriggers.includes("other");
+      const otherOn = showOther;
       return `<div style="margin-top:16px">
         <span class="seclabel inline">出口の形</span>
-        <div class="rulehint">損切りは5日線終値割れに統一。想定と違う動きをしたら潔く撤退。</div>
+        <div class="rulehint">損切りは5日線終値割れが土台。補足があれば「その他」にメモを残せる。</div>
         <div style="padding:11px 12px;border-radius:10px;border:1.5px solid var(--accent);background:var(--accentSoft)">
           <div style="font-size:14px;font-weight:700;color:var(--accent)">${EXIT_TRIGGER.ma5.t}</div>
           <div style="font-size:12px;color:var(--sub);margin-top:2px">${EXIT_TRIGGER.ma5.s}</div>
         </div>
+        <button data-trig="other" class="${otherOn?"active":""}" style="width:100%;display:flex;align-items:center;gap:10px;margin-top:8px;padding:11px 12px;min-height:44px;border-radius:10px;border:1.5px solid ${otherOn?"var(--accent)":"var(--lineStrong)"};background:${otherOn?"var(--accentSoft)":"var(--card)"}">
+          <span class="box" style="width:22px;height:22px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--ondark);background:${otherOn?"var(--accent)":"transparent"};border:1.5px solid ${otherOn?"var(--accent)":"var(--lineStrong)"}">${otherOn?"✓":""}</span>
+          <span style="text-align:left"><div class="pb-t">${EXIT_TRIGGER.other.t}</div><div class="pb-s">${EXIT_TRIGGER.other.s}</div></span>
+        </button>
+        ${showOther?`<div class="field" style="margin-top:10px"><div class="field-label">その他の内容（必須）</div>
+          <input class="input" id="x_otherNote" value="${esc(d.exitOtherNote)}" placeholder="どんな形・理由で降りたか"></div>`:""}
       </div>`;
     }
     d._autoMa5=false;
+    const showOther = d.exitTriggers.includes("other");
     return `<div style="margin-top:16px">
       <span class="seclabel inline">出口の形</span>
-      <div class="rulehint">どの形で利確したか。検証用に必ず1つ選ぶ。</div>
+      <div class="rulehint">どの形で利確したか。当てはまるものを複数選べる。</div>
       <div class="pullback" style="flex-direction:column;gap:8px" id="x_trigGroup">
-        ${EXIT_TRIGGER_KEYS.map(k=>`
-          <button data-trig="${k}" class="${d.exitTrigger===k?"active":""}" style="width:100%">
-            <div class="pb-t">${EXIT_TRIGGER[k].t}</div><div class="pb-s">${EXIT_TRIGGER[k].s}</div>
-          </button>`).join("")}
+        ${EXIT_TRIGGER_KEYS.map(k=>{
+          const on=d.exitTriggers.includes(k);
+          return `<button data-trig="${k}" class="${on?"active":""}" style="width:100%;display:flex;align-items:center;gap:10px">
+            <span class="box" style="width:22px;height:22px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--ondark);background:${on?"var(--accent)":"transparent"};border:1.5px solid ${on?"var(--accent)":"var(--lineStrong)"}">${on?"✓":""}</span>
+            <span style="text-align:left"><div class="pb-t">${EXIT_TRIGGER[k].t}</div><div class="pb-s">${EXIT_TRIGGER[k].s}</div></span>
+          </button>`;
+        }).join("")}
       </div>
+      ${showOther?`<div class="field" style="margin-top:10px"><div class="field-label">その他の内容（必須）</div>
+        <input class="input" id="x_otherNote" value="${esc(d.exitOtherNote)}" placeholder="どんな形・理由で降りたか"></div>`:""}
     </div>`;
   }
   function wireExitTrigger(){
     $main.querySelectorAll("[data-trig]").forEach(b=>{
-      b.onclick=()=>{ d.exitTrigger=b.dataset.trig; renderExit(); };
+      b.onclick=()=>{
+        const k=b.dataset.trig;
+        const i=d.exitTriggers.indexOf(k);
+        if(i>=0) d.exitTriggers.splice(i,1); else d.exitTriggers.push(k);
+        d._autoMa5=false;
+        document.getElementById("x_exitForm").innerHTML=exitTriggerHTML();
+        wireExitTrigger();
+        refreshSave();
+      };
     });
+    const on=document.getElementById("x_otherNote");
+    if(on) on.addEventListener("input", e=>{ d.exitOtherNote=e.target.value; refreshSave(); });
   }
 }
 
@@ -868,7 +928,7 @@ function renderStats(){
   };
   const byPull={ ideal:agg(closed.filter(t=>t.pullback==="ideal")), allow:agg(closed.filter(t=>t.pullback==="allow")) };
   const byExit={};
-  EXIT_TRIGGER_KEYS.forEach(k=> byExit[k]=agg(closed.filter(t=>t.exitTrigger===k)));
+  EXIT_TRIGGER_KEYS.forEach(k=> byExit[k]=agg(closed.filter(t=>exitTrigList(t).includes(k))));
   const totalAgg=agg(closed);
   const addedClosed=closed.filter(t=>t.addedPosition);
   const byAdd={
@@ -934,11 +994,11 @@ function renderStats(){
       ])}
     </div>
 
-    <div class="seclabel">押し目の形 × 成績</div>
+    <div class="seclabel">押し目・戻りの形 × 成績</div>
     <div class="statcard">
       ${gradeTableHTML([
-        {label:"5日線 ≥ 20日線を保った",g:byPull.ideal},
-        {label:"5日線が20日線を割った",g:byPull.allow},
+        {label:"理想の形（20日線を割らず／超えず）",g:byPull.ideal},
+        {label:"許容の形（一度割った／超えた）",g:byPull.allow},
       ])}
     </div>
 
@@ -958,8 +1018,9 @@ function renderStats(){
         {label:EXIT_TRIGGER.wick.t,g:byExit.wick},
         {label:EXIT_TRIGGER.bear2.t,g:byExit.bear2},
         {label:EXIT_TRIGGER.ma5.t,g:byExit.ma5},
-      ])}
-      <div class="rulehint" style="margin-top:10px">上ヒゲ・陰線2本目で早めに降りた利確と、5日線割れまで持った利確で、どちらが伸びているか比較する。データが溜まったら早降りルール化の判断材料に。</div>
+        {label:EXIT_TRIGGER.other.t,g:byExit.other},
+      ], closed.length)}
+      <div class="rulehint" style="margin-top:10px">複数選択のため割合は決済済み全体に対する「その形を含む割合」。合計は100%にならない。早降り（上ヒゲ・陰線2本目）と5日線割れまで保持で、どちらが伸びているか比較する。</div>
     </div>
 
     <div style="height:8px"></div>
@@ -992,8 +1053,8 @@ function plBoxHTML(title,g,total){
 }
 
 /* 成績テーブル：見出し行を一度だけ出し、各行は列揃え。割合は表内合計が100%になる */
-function gradeTableHTML(rows){
-  const totalN = rows.reduce((s,r)=>s+r.g.n,0);
+function gradeTableHTML(rows, fixedTotal){
+  const totalN = (typeof fixedTotal==="number") ? fixedTotal : rows.reduce((s,r)=>s+r.g.n,0);
   const head = `<div class="gradehead">
     <span class="gh-label"></span>
     <span class="gh-pct">割合</span>
@@ -1027,7 +1088,7 @@ function downloadBlob(blob, filename){
 function exportCSV(trades){
   const head=["id","side","symbol","entryDate","entryPrice","units","pullback",
     "ruleOrder","ruleSlope","ruleTrigger","ruleCalm","violationCount","isClean",
-    "exitDate","exitPrice","plAmount","plPct","heldDays","addedPosition","addReasoned","exitTrigger","note"];
+    "exitDate","exitPrice","plAmount","plPct","heldDays","addedPosition","addReasoned","exitTriggers","exitOtherNote","note"];
   const e=v=>{ if(v==null) return ""; const s=String(v); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
   const rows=trades.map(t=>{
     const pl=calcPL(t);
@@ -1037,7 +1098,7 @@ function exportCSV(trades){
       t.exitDate||"",t.exitPrice==null?"":t.exitPrice,
       pl?Math.round(pl.amount):"",pl?pl.pct.toFixed(2):"",
       daysBetween(t.entryDate,t.exitDate)??"",
-      !!t.addedPosition,!!t.addReasoned,t.exitTrigger||"",t.note||""].map(e).join(",");
+      !!t.addedPosition,!!t.addReasoned,exitTrigList(t).join(";"),t.exitOtherNote||"",t.note||""].map(e).join(",");
   });
   const csv="\uFEFF"+[head.join(","),...rows].join("\n");
   downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}), `trade_journal_${todayStr()}.csv`);
