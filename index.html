@@ -190,6 +190,7 @@
     </div>
     <div class="tabs" id="tabs">
       <button class="tab active" data-screen="list">記録</button>
+      <button class="tab" data-screen="history">履歴</button>
       <button class="tab" data-screen="stats">集計</button>
     </div>
   </div>
@@ -365,10 +366,12 @@ function esc(s){
    アプリ状態
    ============================================================ */
 const App = {
-  screen:"list",   // list | entry | exit | stats
+  screen:"list",   // list | entry | exit | stats | history
   trades:[],
   draft:null,
   loaded:false,
+  histSort:"date_desc", // date_desc | date_asc | pl_desc | pl_asc | plpct_desc | plpct_asc | side
+  histFilter:{ side:null, pl:null, rule:null }, // side:buy/sell, pl:gain/loss, rule:clean/viol
 };
 
 const $main = document.getElementById("main");
@@ -418,9 +421,10 @@ function render(){
   $hdTitle.textContent =
     App.screen==="entry"?"エントリー記録":
     App.screen==="exit"?"イグジット記録":
-    App.screen==="stats"?"集計":"トレード記録";
-  // tabs visible only on list/stats
-  const tabScreen = (App.screen==="list"||App.screen==="stats");
+    App.screen==="stats"?"集計":
+    App.screen==="history"?"履歴":"トレード記録";
+  // tabs visible only on list/history/stats
+  const tabScreen = (App.screen==="list"||App.screen==="stats"||App.screen==="history");
   $tabs.style.display = tabScreen ? "flex" : "none";
   if(tabScreen){
     [...$tabs.children].forEach(b=>{
@@ -434,6 +438,7 @@ function render(){
   else if(App.screen==="entry") renderEntry();
   else if(App.screen==="exit") renderExit();
   else if(App.screen==="stats") renderStats();
+  else if(App.screen==="history") renderHistory();
 
   renderBottomBar();
 }
@@ -443,9 +448,9 @@ function renderBottomBar(){
     $bottombar.classList.remove("hide");
     $bottombarInner.innerHTML = `<button class="btn btn-primary" id="bbAdd">＋ エントリーを記録</button>`;
     document.getElementById("bbAdd").onclick = ()=>{ App.draft=blankTrade(); go("entry"); };
-  } else if(App.screen==="stats"){
+  } else if(App.screen==="stats"||App.screen==="history"){
     $bottombar.classList.remove("hide");
-    $bottombarInner.innerHTML = `<button class="btn btn-secondary" id="bbBack">← 一覧へ戻る</button>`;
+    $bottombarInner.innerHTML = `<button class="btn btn-secondary" id="bbBack">← 記録へ戻る</button>`;
     document.getElementById("bbBack").onclick = ()=> go("list");
   } else {
     $bottombar.classList.add("hide");
@@ -469,9 +474,11 @@ function renderList(){
   html += open.length===0 ? `<div class="muted">保有中の取引はない。</div>`
         : open.map(openCardHTML).join("");
   html += `<div style="height:18px"></div>`;
-  html += `<div class="seclabel">決済済み ${closed.length>0?`（${closed.length}）`:""}</div>`;
-  html += closed.length===0 ? `<div class="muted">決済済みの取引はまだない。</div>`
-        : closed.map(closedCardHTML).join("");
+  if(closed.length>0){
+    html += `<button class="btn-secondary" id="goHistory" style="margin-top:4px">決済済み ${closed.length}件を履歴で見る →</button>`;
+  } else {
+    html += `<div class="seclabel">決済済み</div><div class="muted">決済済みの取引はまだない。</div>`;
+  }
   html += `</div>`;
   $main.innerHTML = html;
 
@@ -482,12 +489,8 @@ function renderList(){
     const ed=document.getElementById("edit_"+t.id);
     if(ed) ed.onclick=()=>{ startEntryEdit(t); };
   });
-  closed.forEach(t=>{
-    const ee=document.getElementById("editEntry_"+t.id);
-    if(ee) ee.onclick=()=>{ startEntryEdit(t); };
-    const ex=document.getElementById("editExit_"+t.id);
-    if(ex) ex.onclick=()=>{ startExit(t); };
-  });
+  const gh=document.getElementById("goHistory");
+  if(gh) gh.onclick=()=>go("history");
   wireDeletes();
 }
 
@@ -918,6 +921,112 @@ function agg(arr){
   const wins=pls.filter(p=>p.amount>=0).length;
   return { n, sum, avg:n?sum/n:0, winRate:n?wins/n:0 };
 }
+/* ---------- 履歴 ---------- */
+const HIST_SORT_OPTIONS = [
+  {k:"date_desc", label:"日付（新しい順）"},
+  {k:"date_asc", label:"日付（古い順）"},
+  {k:"pl_desc", label:"損益（高い順）"},
+  {k:"pl_asc", label:"損益（低い順）"},
+  {k:"plpct_desc", label:"損益％（高い順）"},
+  {k:"plpct_asc", label:"損益％（低い順）"},
+  {k:"side", label:"買い／売り"},
+];
+function sortHistory(list, sortKey){
+  const arr = list.slice();
+  const plOf = t=>{ const p=calcPL(t); return p?p.amount:0; };
+  const pctOf = t=>{ const p=calcPL(t); return p?p.pct:0; };
+  const dateOf = t=> t.exitDate||t.entryDate||"";
+  switch(sortKey){
+    case "date_asc": arr.sort((a,b)=> dateOf(a)<dateOf(b)?-1:dateOf(a)>dateOf(b)?1:0); break;
+    case "pl_desc": arr.sort((a,b)=> plOf(b)-plOf(a)); break;
+    case "pl_asc": arr.sort((a,b)=> plOf(a)-plOf(b)); break;
+    case "plpct_desc": arr.sort((a,b)=> pctOf(b)-pctOf(a)); break;
+    case "plpct_asc": arr.sort((a,b)=> pctOf(a)-pctOf(b)); break;
+    case "side": arr.sort((a,b)=> (a.side===b.side)?0:(a.side==="buy"?-1:1)); break;
+    case "date_desc":
+    default: arr.sort((a,b)=> dateOf(a)>dateOf(b)?-1:dateOf(a)<dateOf(b)?1:0); break;
+  }
+  return arr;
+}
+function applyHistFilter(list){
+  const f=App.histFilter;
+  return list.filter(t=>{
+    if(f.side && t.side!==f.side) return false;
+    if(f.pl){
+      const pl=calcPL(t); const amt=pl?pl.amount:0;
+      if(f.pl==="gain" && amt<0) return false;
+      if(f.pl==="loss" && amt>=0) return false;
+    }
+    if(f.rule){
+      const clean=isClean(t.rules);
+      if(f.rule==="clean" && !clean) return false;
+      if(f.rule==="viol" && clean) return false;
+    }
+    return true;
+  });
+}
+function histChipHTML(group,val,label){
+  const on = App.histFilter[group]===val;
+  return `<button data-fil="${group}" data-val="${val}" style="flex:1;border:1.5px solid ${on?"var(--accent)":"var(--lineStrong)"};background:${on?"var(--accent)":"transparent"};color:${on?"var(--ondark)":"var(--sub)"};font-size:13px;font-weight:600;padding:9px 14px;border-radius:10px;min-height:40px">${label}</button>`;
+}
+function renderHistory(){
+  const closed = App.trades.filter(t=>t.exitPrice!=null);
+  if(closed.length===0){
+    $main.innerHTML = emptyHTML("まだ決済した取引がない",
+      "イグジットまで記録した取引が、ここに一覧で並ぶ。絞り込んで見直せる。");
+    return;
+  }
+  const filtered = applyHistFilter(closed);
+  const sorted = sortHistory(filtered, App.histSort);
+  const opts = HIST_SORT_OPTIONS.map(o=>`<option value="${o.k}" ${App.histSort===o.k?"selected":""}>${o.label}</option>`).join("");
+  const anyFilter = App.histFilter.side||App.histFilter.pl||App.histFilter.rule;
+  $main.innerHTML = `<div class="pad">
+    <div style="margin:6px 2px 6px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--sub);font-weight:600;width:52px;flex-shrink:0">売買</span>
+        ${histChipHTML("side","buy","買い")}
+        ${histChipHTML("side","sell","売り")}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--sub);font-weight:600;width:52px;flex-shrink:0">損益</span>
+        ${histChipHTML("pl","gain","利益")}
+        ${histChipHTML("pl","loss","損失")}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--sub);font-weight:600;width:52px;flex-shrink:0">ルール</span>
+        ${histChipHTML("rule","clean","遵守")}
+        ${histChipHTML("rule","viol","違反")}
+      </div>
+    </div>
+    ${anyFilter?`<button id="histClear" style="border:none;background:transparent;color:var(--accent);font-size:12px;font-weight:600;padding:2px 2px;margin:0 0 8px">× フィルタを解除</button>`:""}
+    <div style="display:flex;align-items:center;gap:10px;margin:4px 2px 12px">
+      <span style="font-size:12px;color:var(--sub);font-weight:600;white-space:nowrap">並べ替え</span>
+      <select class="input" id="histSort" style="min-height:42px;padding:8px 10px">${opts}</select>
+    </div>
+    <div style="font-size:12px;color:var(--sub);margin:0 2px 10px">${sorted.length}件${sorted.length!==closed.length?` / 全${closed.length}件`:""}</div>
+    ${sorted.length===0?`<div class="muted">条件に合う取引がない。</div>`:sorted.map(closedCardHTML).join("")}
+  </div>`;
+  // フィルタチップ
+  $main.querySelectorAll("[data-fil]").forEach(b=>{
+    b.onclick=()=>{
+      const g=b.dataset.fil, v=b.dataset.val;
+      App.histFilter[g] = (App.histFilter[g]===v) ? null : v;
+      renderHistory();
+    };
+  });
+  const clr=document.getElementById("histClear");
+  if(clr) clr.onclick=()=>{ App.histFilter={side:null,pl:null,rule:null}; renderHistory(); };
+  document.getElementById("histSort").onchange=(e)=>{ App.histSort=e.target.value; renderHistory(); };
+  // 編集・削除の配線
+  sorted.forEach(t=>{
+    const ee=document.getElementById("editEntry_"+t.id);
+    if(ee) ee.onclick=()=>{ startEntryEdit(t); };
+    const ex=document.getElementById("editExit_"+t.id);
+    if(ex) ex.onclick=()=>{ startExit(t); };
+  });
+  wireDeletes();
+}
+
 function renderStats(){
   const trades=App.trades;
   const closed=trades.filter(t=>t.exitPrice!=null);
@@ -1042,13 +1151,14 @@ function renderStats(){
 
     <div style="height:8px"></div>
     <div class="seclabel">バックアップ</div>
+    <div style="font-size:12px;color:var(--sub);margin:0 2px 10px">最終バックアップ：${lastBackupDate()||"まだ書き出していない"}</div>
     <button class="btn-secondary" id="st_json" style="margin-bottom:10px">⬇ バックアップを書き出す（JSON・復元用）</button>
     <button class="btn-secondary" id="st_restore" style="margin-bottom:10px">⬆ バックアップから復元する</button>
     <button class="btn-secondary" id="st_csv">⬇ CSVで書き出す（表計算で見る用）</button>
     <div class="smallnote center">記録はこの端末のブラウザ内にだけある。履歴削除や機種変で消えるので、週末などにJSONを書き出してドライブやメールに保管を。消えてもJSONから戻せる。</div>
   </div>`;
 
-  document.getElementById("st_json").onclick=()=>exportJSON(trades);
+  document.getElementById("st_json").onclick=()=>{ exportJSON(trades); renderStats(); };
   document.getElementById("st_restore").onclick=()=>importJSONFile();
   document.getElementById("st_csv").onclick=()=>exportCSV(trades);
 }
@@ -1133,7 +1243,11 @@ function exportJSON(trades){
   };
   const json = JSON.stringify(payload,null,2);
   downloadBlob(new Blob([json],{type:"application/json"}), `trade_journal_backup_${todayStr()}.json`);
+  try{ localStorage.setItem("tradeJournalLastBackup", todayStr()); }catch(e){}
   flash("バックアップを書き出した（"+trades.length+"件）");
+}
+function lastBackupDate(){
+  try{ return localStorage.getItem("tradeJournalLastBackup"); }catch(e){ return null; }
 }
 
 /* ---------- JSON 復元（統合：同じidは上書き、新規は追加） ---------- */
