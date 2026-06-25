@@ -14,7 +14,8 @@
   :root{
     --paper:#F6F1E7; --card:#FFFDF8; --ink:#2B2A26; --sub:#6E685C;
     --line:#E3DCCB; --lineStrong:#CFC6B0; --field:#FBF8F1;
-    --accent:#3A5A6B; --accentSoft:#E7EDF0; --gain:#3F7A57; --loss:#A8443B;
+    --accent:#3A5A6B; --accentSoft:#E7EDF0; --gain:#C0392B; --loss:#3F7A57;
+    --buy:#C0392B; --buySoft:#F7EBE9; --sell:#3F7A57; --sellSoft:#EAF1ED;
     --warn:#C08A2D; --ondark:#FBF8F1;
     --sans:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Segoe UI",sans-serif;
     --mono:"SF Mono","Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -101,8 +102,8 @@
 
   /* rule check */
   .rulehead{display:flex;align-items:baseline;justify-content:space-between;}
-  .rulehead .status-clear{font-size:12px;color:var(--gain);font-weight:600;}
-  .rulehead .status-viol{font-size:12px;color:var(--loss);font-weight:600;}
+  .rulehead .status-clear{font-size:12px;color:var(--accent);font-weight:600;}
+  .rulehead .status-viol{font-size:12px;color:var(--warn);font-weight:600;}
   .rulehint{font-size:12px;color:var(--sub);margin:4px 0 10px;}
   .rulerow{display:flex;align-items:center;justify-content:space-between;gap:10px;
     padding:11px 0;border-bottom:1px solid var(--line);}
@@ -346,6 +347,8 @@ function fmtPct(n){
   return s+Math.abs(n).toFixed(2)+"%";
 }
 function cardBorderColor(v){ return v===0?"var(--gain)":v<=2?"var(--warn)":"var(--loss)"; }
+function sideColor(side){ return side==="sell" ? "var(--sell)" : "var(--buy)"; }
+function sideSoft(side){ return side==="sell" ? "var(--sellSoft)" : "var(--buySoft)"; }
 
 function blankTrade(){
   return {
@@ -372,6 +375,7 @@ const App = {
   loaded:false,
   histSort:"date_desc", // date_desc | date_asc | pl_desc | pl_asc | plpct_desc | plpct_asc | side
   histFilter:{ side:null, pl:null, rule:null }, // side:buy/sell, pl:gain/loss, rule:clean/viol
+  returnTo:"list", // entry/exit編集から戻る先
 };
 
 const $main = document.getElementById("main");
@@ -395,13 +399,20 @@ function flash(msg){
   flash._t = setTimeout(()=>{ $toastHost.innerHTML=""; }, 2600);
 }
 
-function go(screen){ App.screen=screen; render(); }
+function go(screen){
+  // entry/exit編集に入るとき、呼び出し元(list/history)を戻り先として記録
+  if((screen==="entry"||screen==="exit") && (App.screen==="list"||App.screen==="history")){
+    App.returnTo = App.screen;
+  }
+  App.screen=screen;
+  render();
+}
 
 async function commitTrade(t, msg){
   try{
     await dbPut(t);
     await loadTrades();
-    App.screen="list";
+    App.screen = App.returnTo || "list";
     render();
     flash(msg);
   }catch(e){
@@ -504,20 +515,22 @@ function openCardHTML(t){
   const v=violationCount(t.rules), unchecked=uncheckedCount(t.rules);
   let status;
   if(unchecked>0) status=`<span class="tag" style="color:var(--warn);border-color:var(--warn)">未評価が${unchecked}項目</span>`;
-  else if(v===0) status=`<span class="tag" style="color:var(--gain);border-color:var(--gain)">ルール通り</span>`;
-  else status=`<span class="tag" style="color:var(--loss);border-color:var(--loss)">違反${v}項目</span>`;
-  return `<div class="card" style="border-left:4px solid ${cardBorderColor(v)}">
-    ${cardTopHTML(t)}
-    <div class="pills">
-      <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
-      <span class="pill">${pbPill(t.side,t.pullback)}</span>
-      <span class="pill mono">建値 ${Number(t.entryPrice).toLocaleString("ja-JP")}</span>
-      <span class="pill mono">${esc(t.units)}単元</span>
+  else if(v===0) status=`<span class="tag" style="color:var(--accent);border-color:var(--accent)">ルール通り</span>`;
+  else status=`<span class="tag" style="color:var(--warn);border-color:var(--warn)">違反${v}項目</span>`;
+  return `<div class="card" style="border-left:5px solid ${sideColor(t.side)};background:${sideSoft(t.side)}">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span style="display:inline-block;font-size:12px;font-weight:700;color:var(--ondark);background:${sideColor(t.side)};border-radius:6px;padding:3px 10px">${t.side==="buy"?"買い":"売り"}</span>
+      <div style="font-size:12px;color:var(--sub);font-family:var(--mono)">${esc(t.entryDate)}</div>
     </div>
-    <div style="margin-top:10px">
-      ${status}
-      <span style="margin-left:10px;font-size:12px;color:var(--sub)">想定撤退ライン＝5日線終値割れ</span>
+    <div style="font-size:17px;font-weight:700;margin-top:6px">${esc(t.symbol||"（銘柄未入力）")}</div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <span style="font-size:12px;color:var(--sub)">エントリー</span>
+      <span style="font-family:var(--mono);font-size:20px;font-weight:700">${Number(t.entryPrice).toLocaleString("ja-JP")}</span>
+      <span style="font-size:12px;color:var(--sub)">${esc(t.units)}単元</span>
     </div>
+    <div class="pills"><span class="pill">${pbPill(t.side,t.pullback)}</span></div>
+    ${ruleSummaryHTML(t)}
+    <div style="font-size:12px;color:var(--sub);margin-top:8px">想定撤退ライン＝5日線終値割れ</div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn-primary-sm" id="exit_${t.id}">イグジットを記録</button>
       <button class="btn-edit" id="edit_${t.id}">編集</button>
@@ -526,28 +539,64 @@ function openCardHTML(t){
   </div>`;
 }
 
+function ruleSummaryHTML(t){
+  const v=violationCount(t.rules), unchecked=uncheckedCount(t.rules);
+  if(unchecked>0 && v===0){
+    return `<div style="margin-top:10px"><span class="tag" style="color:var(--warn);border-color:var(--warn)">未評価が${unchecked}項目</span></div>`;
+  }
+  if(v===0){
+    return `<div style="margin-top:10px"><span class="tag" style="color:var(--accent);border-color:var(--accent)">✓ ルール通り（全項目クリア）</span></div>`;
+  }
+  // 違反あり：4項目を展開、違反項目をハイライト・守った項目を控えめに
+  const labels = RULE_LABELS[t.side]||RULE_LABELS.buy;
+  const rows = RULE_KEYS.map(k=>{
+    const val=t.rules[k];
+    if(val===false){
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:8px;background:var(--buySoft);border:1px solid var(--buy);margin-bottom:4px">
+        <span style="color:var(--buy);font-weight:700;font-size:13px">×</span>
+        <span style="font-size:13px;font-weight:600;color:var(--ink)">${labels[k].t}</span>
+      </div>`;
+    }
+    const mark = val===true?"○":"–";
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;opacity:.45;margin-bottom:4px">
+      <span style="font-size:13px;color:var(--sub)">${mark}</span>
+      <span style="font-size:13px;color:var(--sub)">${labels[k].t}</span>
+    </div>`;
+  }).join("");
+  return `<div style="margin-top:10px">
+    <div style="font-size:12px;font-weight:700;color:var(--buy);margin-bottom:6px">違反${v}項目</div>
+    ${rows}
+  </div>`;
+}
+
 function closedCardHTML(t){
   const v=violationCount(t.rules), pl=calcPL(t), held=daysBetween(t.entryDate,t.exitDate);
   const win = pl && pl.amount>=0;
   const col = win?"var(--gain)":"var(--loss)";
-  let tags = (v===0
-      ? `<span class="tag" style="color:var(--gain);border-color:var(--gain)">ルール通り</span>`
-      : `<span class="tag" style="color:var(--loss);border-color:var(--loss)">違反${v}項目</span>`);
-  if(t.addedPosition) tags+=`<span class="tag" style="color:${t.addReasoned?"var(--sub)":"var(--loss)"};border-color:${t.addReasoned?"var(--sub)":"var(--loss)"}">${t.addReasoned?"買い増しあり（根拠あり）":"根拠なき買い増し"}</span>`;
+  let tags = "";
+  if(t.addedPosition) tags+=`<span class="tag" style="color:${t.addReasoned?"var(--sub)":"var(--buy)"};border-color:${t.addReasoned?"var(--sub)":"var(--buy)"}">${t.addReasoned?"買い増しあり（根拠あり）":"根拠なき買い増し"}</span>`;
   exitTrigList(t).forEach(k=>{ if(EXIT_TRIGGER[k]) tags+=`<span class="tag" style="color:var(--sub);border-color:var(--sub)">出口：${EXIT_TRIGGER[k].t}</span>`; });
-  return `<div class="card" style="border-left:4px solid ${cardBorderColor(v)}">
-    ${cardTopHTML(t)}
+  return `<div class="card" style="border-left:5px solid ${sideColor(t.side)};background:${sideSoft(t.side)}">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span style="display:inline-block;font-size:12px;font-weight:700;color:var(--ondark);background:${sideColor(t.side)};border-radius:6px;padding:3px 10px">${t.side==="buy"?"買い":"売り"}</span>
+      <div style="font-size:12px;color:var(--sub);font-family:var(--mono)">${esc(t.entryDate)}</div>
+    </div>
+    <div style="font-size:17px;font-weight:700;margin-top:6px">${esc(t.symbol||"（銘柄未入力）")}</div>
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:8px">
       <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:${col}">${pl?fmtYen(pl.amount):"—"}</div>
       <div style="font-family:var(--mono);font-size:14px;color:${col}">${pl?fmtPct(pl.pct):""}</div>
     </div>
+    <div style="display:flex;align-items:baseline;gap:6px;margin-top:8px;font-family:var(--mono);font-size:14px">
+      <span style="font-size:11px;color:var(--sub);font-family:var(--sans)">エントリー</span>${Number(t.entryPrice).toLocaleString("ja-JP")}
+      <span style="color:var(--sub)">→</span>
+      <span style="font-size:11px;color:var(--sub);font-family:var(--sans)">イグジット</span>${Number(t.exitPrice).toLocaleString("ja-JP")}
+    </div>
     <div class="pills">
-      <span class="pill">${t.side==="buy"?"買い":"売り"}</span>
       <span class="pill">${pbPill(t.side,t.pullback)}</span>
-      <span class="pill mono">${Number(t.entryPrice).toLocaleString("ja-JP")} → ${Number(t.exitPrice).toLocaleString("ja-JP")}</span>
       ${held!=null?`<span class="pill">${held}日保有</span>`:""}
     </div>
-    <div class="statusline">${tags}</div>
+    ${ruleSummaryHTML(t)}
+    ${tags?`<div class="statusline">${tags}</div>`:""}
     ${t.note?`<div class="note-box">${esc(t.note)}</div>`:""}
     <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
       <button class="btn-edit" id="editEntry_${t.id}">エントリー編集</button>
@@ -635,7 +684,7 @@ function renderEntry(){
   bindInput("f_entryPrice", val=>{ d.entryPrice=val; });
   wireRuleButtons(d, ()=>renderEntry());
 
-  document.getElementById("f_cancel").onclick=()=>go("list");
+  document.getElementById("f_cancel").onclick=()=>go(App.returnTo);
   const saveBtn=document.getElementById("f_save");
   const refreshSave=()=>{
     const ok = d.symbol.trim() && Number(d.entryPrice)>0 && Number(d.units)>0;
@@ -756,7 +805,7 @@ function renderExit(){
   }
 
   $main.innerHTML = `<div class="pad2">
-    <div class="card" style="border-left:4px solid ${cardBorderColor(violationCount(d.rules))}">
+    <div class="card" style="border-left:4px solid ${sideColor(d.side)}">
       ${cardTopHTML(d)}
       <div class="pills">
         <span class="pill">${d.side==="buy"?"買い":"売り"}</span>
@@ -827,7 +876,7 @@ function renderExit(){
     if(rn) rn.addEventListener("input", e=>{ d.addReasonNote=e.target.value; refreshSave(); });
   }
 
-  document.getElementById("x_cancel").onclick=()=>go("list");
+  document.getElementById("x_cancel").onclick=()=>go(App.returnTo);
   const saveBtn=document.getElementById("x_save");
   function refreshSave(){
     const trigOk = d.exitTriggers.length>0 && (!d.exitTriggers.includes("other") || d.exitOtherNote.trim());
